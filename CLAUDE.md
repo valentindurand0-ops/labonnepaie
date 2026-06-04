@@ -84,7 +84,16 @@ l'affichage. Il doit être testable seul, avec des tests unitaires par règle de
 ## État d'avancement
 - Scaffolding React + Vite et authentification Supabase en place.
 - Moteur de calcul pur (src/engine) : calculerBulletin + getBareme, barème
-  Syntec 2026-01 versionné, 23 tests unitaires qui passent.
+  Syntec 2026-01 versionné.
+- Le moteur gère deux statuts : cadre et etam (non cadre).
+  - Prévoyance différenciée : cadre 1,50% patronale pure ; non cadre 0,250%
+    répartie 10/10 (salariale + patronale).
+  - APEC et prévoyance cadre : cadre uniquement.
+  - Base CSG calée par statut sur SimulPaie (cadre 3990, non cadre 3940).
+    L'assiette réelle (notamment la réintégration de la prévoyance) est
+    A VALIDER par expert-comptable, PRIORITE HAUTE.
+  - 48 tests unitaires passent : 23 pour le cas étalon cadre, 25 pour le cas
+    étalon etam (non cadre).
 - Affichage du bulletin : src/pages/BulletinPage.tsx (route protégée /bulletin,
   lien depuis la home). Formulaire réactif (statut, brut, taux AT/MP, heures,
   barème en lecture seule) branché sur le moteur. Toute la logique de calcul
