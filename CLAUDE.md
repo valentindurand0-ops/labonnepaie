@@ -80,3 +80,13 @@ idéalement un cadre Syntec au forfait jours.
 Le moteur de calcul de paie doit être un MODULE PUR, isolé de toute UI React :
 entrées (données des 4 couches) -> sortie (bulletin calculé), sans dépendance à
 l'affichage. Il doit être testable seul, avec des tests unitaires par règle de calcul.
+
+## État d'avancement
+- Scaffolding React + Vite et authentification Supabase en place.
+- Moteur de calcul pur (src/engine) : calculerBulletin + getBareme, barème
+  Syntec 2026-01 versionné, 23 tests unitaires qui passent.
+- Affichage du bulletin : src/pages/BulletinPage.tsx (route protégée /bulletin,
+  lien depuis la home). Formulaire réactif (statut, brut, taux AT/MP, heures,
+  barème en lecture seule) branché sur le moteur. Toute la logique de calcul
+  reste dans src/engine ; la page ne fait qu'appeler calculerBulletin / getBareme
+  et afficher le résultat (lignes salariales/patronales, totaux, gestion d'erreur).
