@@ -1,163 +1,186 @@
-// ECART CONNU vs SimulPaie (divergences VOLONTAIRES entre notre moteur juste
-// et le simulateur de reference, a tracer ici au fur et a mesure) :
-//   1. Cout employeur : notre moteur INCLUT la prevoyance cadre Tranche A
-//      (60.00 sur ce cas) dans le cout total employeur, car c'est un cout
-//      patronal reel. SimulPaie l'excluait a tort, d'ou son etalon a 5528.08.
-//      Notre valeur comptablement correcte est 5588.08.
-//   2. Abattement CSG : on suit pour l'instant SimulPaie (0.25 %, soit
-//      base = brut x 0.9975), alors que le taux d'abattement legal de
-//      reference est 1.75 %. A VALIDER par expert-comptable.
-//   3. Base CSG non cadre : pour un etam, SimulPaie donne une base de 3940
-//      (et non 3990), soit un abattement effectif de 1.50 %. Le moteur cale
-//      cette base sur SimulPaie via abattementCsgNonCadre. La logique d'assiette
-//      reelle (reintegration de la prevoyance) est A CONFIRMER par expert-comptable,
-//      PRIORITE HAUTE. Voir le cas etalon dans calcul.etam.test.ts.
+// Tests STRUCTURELS du moteur recode sur base legale 2026 (tranches T1/T2, RGDU,
+// CSG legale). On NE fige aucun montant exact pour l'instant : les valeurs seront
+// gelees plus tard, apres validation visuelle d'un bulletin de reference. On
+// verifie ici la STRUCTURE : presence des bonnes lignes, bonnes assiettes, et les
+// invariants (net = brut - retenues, T1 + T2 = brut, lignes T2 nulles sous PMSS).
 
 import { describe, it, expect } from "vitest";
-import { calculerBulletin, LIBELLES } from "../calcul";
-import { baremeSyntec202601 } from "../baremes/syntec-2026-01";
-import type {
-  BulletinCalcule,
-  EntreeBulletin,
-  LigneCotisation,
-} from "../types";
+import { calculerBulletin, calculerRgdu, LIBELLES } from "../calcul";
+import { baremeSyntec202606 } from "../baremes/syntec-2026-06";
+import type { EntreeBulletin, LigneCotisation } from "../types";
 
-// Recupere le montant d'une ligne par son libelle.
-function montant(lignes: LigneCotisation[], libelle: string): number {
-  const trouvee = lignes.find((l) => l.libelle === libelle);
-  if (!trouvee) {
-    throw new Error(`Ligne introuvable : "${libelle}".`);
-  }
-  return trouvee.montant;
+const PMSS = baremeSyntec202606.pmss;
+
+// Recupere une ligne par son libelle, ou undefined si absente.
+function ligne(
+  lignes: LigneCotisation[],
+  libelle: string,
+): LigneCotisation | undefined {
+  return lignes.find((l) => l.libelle === libelle);
 }
 
-// Cas etalon impose : cadre, brut 4000, AT/MP 1.4, 151.67 heures.
-const entreeEtalon: EntreeBulletin = {
-  legal: { bareme: "syntec-2026-01" },
-  entreprise: { tauxAtMp: 1.4 },
-  salarie: { statut: "cadre", brutMensuel: 4000 },
-  mensuel: { heures: 151.67 },
-};
+// Somme des montants d'une liste de lignes.
+function sommeMontants(lignes: LigneCotisation[]): number {
+  return Math.round(lignes.reduce((t, l) => t + l.montant, 0) * 100) / 100;
+}
 
-describe("calculerBulletin : cas etalon cadre 4000 euros", () => {
-  let bulletin: BulletinCalcule;
+function entree(
+  statut: "cadre" | "etam",
+  brutMensuel: number,
+  extra: Partial<EntreeBulletin["salarie"]> = {},
+): EntreeBulletin {
+  return {
+    legal: { bareme: "syntec-2026-06" },
+    entreprise: { tauxAtMp: 1.4 },
+    salarie: { statut, brutMensuel, ...extra },
+    mensuel: { heures: 151.67 },
+  };
+}
 
-  // Recalcule avant chaque test pour garantir l'isolation (fonction pure).
-  function calcul(): BulletinCalcule {
-    return calculerBulletin(entreeEtalon, baremeSyntec202601);
-  }
+describe("structure cadre 4000 (brut < PMSS, T2 = 0)", () => {
+  const b = calculerBulletin(entree("cadre", 4000), baremeSyntec202606);
 
-  bulletin = calcul();
-
-  it("brutTotal = 4000.00", () => {
-    expect(bulletin.brutTotal).toBe(4000.0);
+  it("brutTotal = 4000", () => {
+    expect(b.brutTotal).toBe(4000);
   });
 
-  // --- Cotisations salariales ---
-  it("salariale SS deplafonnee = 16.00", () => {
-    expect(montant(bulletin.lignesSalariales, LIBELLES.ssDeplafonnee)).toBe(16.0);
+  it("vieillesse plafonnee : assiette T1 (base 4000)", () => {
+    const l = ligne(b.lignesSalariales, LIBELLES.vieillessePlafonnee);
+    expect(l?.base).toBe(4000);
   });
 
-  it("salariale SS plafonnee = 276.00", () => {
-    expect(montant(bulletin.lignesSalariales, LIBELLES.ssPlafonnee)).toBe(276.0);
+  it("vieillesse deplafonnee : assiette brut (base 4000)", () => {
+    const l = ligne(b.lignesSalariales, LIBELLES.vieillesseDeplafonnee);
+    expect(l?.base).toBe(4000);
   });
 
-  it("salariale retraite complementaire Tranche A = 160.40", () => {
-    expect(montant(bulletin.lignesSalariales, LIBELLES.retraiteTrancheA)).toBe(
-      160.4,
+  it("retraite et CEG T1 presents", () => {
+    expect(ligne(b.lignesSalariales, LIBELLES.retraiteT1)).toBeDefined();
+    expect(ligne(b.lignesSalariales, LIBELLES.cegT1)).toBeDefined();
+  });
+
+  it("APEC presente (cadre), prevoyance cadre presente (patronale)", () => {
+    expect(ligne(b.lignesSalariales, LIBELLES.apec)).toBeDefined();
+    expect(ligne(b.lignesPatronales, LIBELLES.prevoyanceCadre)).toBeDefined();
+  });
+
+  it("aucune prevoyance non cadre", () => {
+    expect(ligne(b.lignesSalariales, LIBELLES.prevoyanceNonCadre)).toBeUndefined();
+    expect(ligne(b.lignesPatronales, LIBELLES.prevoyanceNonCadre)).toBeUndefined();
+  });
+
+  it("aucune ligne CET sous le PMSS", () => {
+    expect(ligne(b.lignesSalariales, LIBELLES.cet)).toBeUndefined();
+    expect(ligne(b.lignesPatronales, LIBELLES.cet)).toBeUndefined();
+  });
+
+  it("assiette CSG legale : 0.9825*4000 + prevoyance cadre patronale (60) = 3990", () => {
+    const l = ligne(b.lignesSalariales, LIBELLES.csgDeductible);
+    expect(l?.base).toBe(3990);
+  });
+
+  it("net = brut - somme des retenues salariales", () => {
+    const net = Math.round((4000 - sommeMontants(b.lignesSalariales)) * 100) / 100;
+    expect(b.netSocial).toBe(net);
+  });
+
+  it("allegement RGDU present comme ligne patronale negative", () => {
+    const l = ligne(b.lignesPatronales, LIBELLES.allegementGeneral);
+    expect(l).toBeDefined();
+    expect(l!.montant).toBeLessThan(0);
+    expect(b.allegementCotisations).toBeGreaterThan(0);
+  });
+});
+
+describe("structure ETAM 4000", () => {
+  const b = calculerBulletin(entree("etam", 4000), baremeSyntec202606);
+
+  it("prevoyance non cadre presente (salariale ET patronale)", () => {
+    expect(ligne(b.lignesSalariales, LIBELLES.prevoyanceNonCadre)).toBeDefined();
+    expect(ligne(b.lignesPatronales, LIBELLES.prevoyanceNonCadre)).toBeDefined();
+  });
+
+  it("aucune APEC ni prevoyance cadre", () => {
+    expect(ligne(b.lignesSalariales, LIBELLES.apec)).toBeUndefined();
+    expect(ligne(b.lignesPatronales, LIBELLES.apec)).toBeUndefined();
+    expect(ligne(b.lignesPatronales, LIBELLES.prevoyanceCadre)).toBeUndefined();
+  });
+
+  it("assiette CSG : 3930 + prevoyance etam patronale (5) = 3935", () => {
+    const l = ligne(b.lignesSalariales, LIBELLES.csgDeductible);
+    expect(l?.base).toBe(3935);
+  });
+
+  it("net = brut - somme des retenues salariales", () => {
+    const net = Math.round((4000 - sommeMontants(b.lignesSalariales)) * 100) / 100;
+    expect(b.netSocial).toBe(net);
+  });
+});
+
+describe("invariant tranches : T1 + T2 = brut", () => {
+  it("brut sous le PMSS : T1 = brut, T2 = 0, lignes T2 a 0", () => {
+    const b = calculerBulletin(entree("cadre", 4000), baremeSyntec202606);
+    // T1 = vieillesse plafonnee, base 4000 ; T2 = 0 -> retraite/CEG T2 nuls.
+    const retraiteT2 = ligne(b.lignesSalariales, LIBELLES.retraiteT2);
+    const cegT2 = ligne(b.lignesSalariales, LIBELLES.cegT2);
+    expect(retraiteT2?.base ?? 0).toBe(0);
+    expect(retraiteT2?.montant ?? 0).toBe(0);
+    expect(cegT2?.base ?? 0).toBe(0);
+    expect(cegT2?.montant ?? 0).toBe(0);
+  });
+
+  it("brut au-dessus du PMSS (4500) : T2 > 0, retraite T2 et CET apparaissent", () => {
+    const b = calculerBulletin(entree("cadre", 4500), baremeSyntec202606);
+    const t2 = 4500 - PMSS; // 495
+    expect(t2).toBeGreaterThan(0);
+
+    const retraiteT2 = ligne(b.lignesSalariales, LIBELLES.retraiteT2);
+    expect(retraiteT2?.base).toBe(t2);
+    expect(retraiteT2!.montant).toBeGreaterThan(0);
+
+    const cet = ligne(b.lignesSalariales, LIBELLES.cet);
+    expect(cet).toBeDefined();
+    expect(cet?.base).toBe(4500); // t1t2 = T1 + T2 = brut
+    expect(cet!.montant).toBeGreaterThan(0);
+
+    // Invariant : la base T1 (vieillesse plafonnee) + T2 = brut.
+    const vieillesseT1 = ligne(b.lignesSalariales, LIBELLES.vieillessePlafonnee);
+    expect((vieillesseT1?.base ?? 0) + (retraiteT2?.base ?? 0)).toBe(4500);
+  });
+});
+
+describe("mutuelle patronale reintegree dans l'assiette CSG", () => {
+  it("une part patronale mutuelle augmente la base CSG d'autant", () => {
+    const sans = calculerBulletin(entree("cadre", 4000), baremeSyntec202606);
+    const avec = calculerBulletin(
+      entree("cadre", 4000, { mutuellePartPatronale: 40 }),
+      baremeSyntec202606,
     );
+    const baseSans = ligne(sans.lignesSalariales, LIBELLES.csgDeductible)?.base ?? 0;
+    const baseAvec = ligne(avec.lignesSalariales, LIBELLES.csgDeductible)?.base ?? 0;
+    expect(baseAvec).toBe(baseSans + 40);
   });
+});
 
-  it("salariale chomage APEC = 0.96", () => {
-    expect(montant(bulletin.lignesSalariales, LIBELLES.chomageApec)).toBe(0.96);
-  });
+describe("calculerRgdu : garde-fous", () => {
+  const { tmin, tdelta, p, smicAnnuelRgdu } = baremeSyntec202606.rgdu;
 
-  it("salariale CSG non imposable = 271.32", () => {
-    expect(montant(bulletin.lignesSalariales, LIBELLES.csgNonImposable)).toBe(
-      271.32,
-    );
-  });
-
-  it("salariale CSG/CRDS imposable = 115.71", () => {
-    expect(montant(bulletin.lignesSalariales, LIBELLES.csgCrdsImposable)).toBe(
-      115.71,
-    );
-  });
-
-  it("totalRetenuesSalariales = 840.39", () => {
-    expect(bulletin.totalRetenuesSalariales).toBe(840.39);
-  });
-
-  it("netSocial = 3159.61", () => {
-    expect(bulletin.netSocial).toBe(3159.61);
-  });
-
-  it("netAPayerAvantImpot = 3159.61", () => {
-    expect(bulletin.netAPayerAvantImpot).toBe(3159.61);
-  });
-
-  // --- Cotisations patronales ---
-  it("patronale sante maladie = 520.00", () => {
-    expect(montant(bulletin.lignesPatronales, LIBELLES.santeMaladie)).toBe(520.0);
-  });
-
-  it("patronale prevoyance cadre Tranche A = 60.00", () => {
-    expect(montant(bulletin.lignesPatronales, LIBELLES.prevoyanceCadre)).toBe(
-      60.0,
-    );
-  });
-
-  it("patronale AT/MP = 56.00", () => {
-    expect(montant(bulletin.lignesPatronales, LIBELLES.atMp)).toBe(56.0);
-  });
-
-  it("patronale SS deplafonnee = 84.40", () => {
-    expect(montant(bulletin.lignesPatronales, LIBELLES.ssDeplafonnee)).toBe(84.4);
-  });
-
-  it("patronale SS plafonnee = 342.00", () => {
-    expect(montant(bulletin.lignesPatronales, LIBELLES.ssPlafonnee)).toBe(342.0);
-  });
-
-  it("patronale retraite complementaire Tranche A = 240.40", () => {
-    expect(montant(bulletin.lignesPatronales, LIBELLES.retraiteTrancheA)).toBe(
-      240.4,
-    );
-  });
-
-  it("patronale famille = 210.00", () => {
-    expect(montant(bulletin.lignesPatronales, LIBELLES.famille)).toBe(210.0);
-  });
-
-  it("patronale assurance chomage = 160.00", () => {
-    expect(montant(bulletin.lignesPatronales, LIBELLES.assuranceChomage)).toBe(
-      160.0,
-    );
-  });
-
-  it("patronale chomage AGS = 10.00", () => {
-    expect(montant(bulletin.lignesPatronales, LIBELLES.chomageAgs)).toBe(10.0);
-  });
-
-  it("patronale APEC = 1.44", () => {
-    expect(montant(bulletin.lignesPatronales, LIBELLES.apec)).toBe(1.44);
-  });
-
-  it("patronale autres contributions employeur = 61.84", () => {
+  it("coefficient = 0 au-dela de 3 SMIC", () => {
+    expect(calculerRgdu(3 * smicAnnuelRgdu, smicAnnuelRgdu, { tmin, tdelta, p })).toBe(0);
     expect(
-      montant(bulletin.lignesPatronales, LIBELLES.autresContributions),
-    ).toBe(61.84);
+      calculerRgdu(3 * smicAnnuelRgdu + 1000, smicAnnuelRgdu, { tmin, tdelta, p }),
+    ).toBe(0);
   });
 
-  it("allegementCotisations = 158.00", () => {
-    expect(bulletin.allegementCotisations).toBe(158.0);
+  it("coefficient plafonne a Tmin + Tdelta (0.3981) au SMIC", () => {
+    const c = calculerRgdu(smicAnnuelRgdu, smicAnnuelRgdu, { tmin, tdelta, p });
+    expect(c).toBe(Math.round((tmin + tdelta) * 10000) / 10000);
+    expect(c).toBe(0.3981);
   });
 
-  // Voir "ECART CONNU vs SimulPaie" en tete de fichier : l'etalon SimulPaie
-  // donnait 5528.08 en excluant a tort la prevoyance cadre (60.00) du cout
-  // employeur. Notre moteur applique le calcul comptablement correct :
-  // brut (4000.00) + cotisations patronales (1746.08) - allegement (158.00).
-  it("coutTotalEmployeur = 5588.08", () => {
-    expect(bulletin.coutTotalEmployeur).toBe(5588.08);
+  it("coefficient strictement positif entre 1 et 3 SMIC", () => {
+    const c = calculerRgdu(2 * smicAnnuelRgdu, smicAnnuelRgdu, { tmin, tdelta, p });
+    expect(c).toBeGreaterThan(0);
+    expect(c).toBeLessThan(tmin + tdelta);
   });
 });

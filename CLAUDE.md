@@ -83,17 +83,35 @@ l'affichage. Il doit être testable seul, avec des tests unitaires par règle de
 
 ## État d'avancement
 - Scaffolding React + Vite et authentification Supabase en place.
-- Moteur de calcul pur (src/engine) : calculerBulletin + getBareme, barème
-  Syntec 2026-01 versionné.
-- Le moteur gère deux statuts : cadre et etam (non cadre).
-  - Prévoyance différenciée : cadre 1,50% patronale pure ; non cadre 0,250%
-    répartie 10/10 (salariale + patronale).
-  - APEC et prévoyance cadre : cadre uniquement.
-  - Base CSG calée par statut sur SimulPaie (cadre 3990, non cadre 3940).
-    L'assiette réelle (notamment la réintégration de la prévoyance) est
-    A VALIDER par expert-comptable, PRIORITE HAUTE.
-  - 48 tests unitaires passent : 23 pour le cas étalon cadre, 25 pour le cas
-    étalon etam (non cadre).
+- ÉTAPE FAITE : recodage du moteur (src/engine) sur base légale 2026.
+  L'ancienne logique calée sur SimulPaie a été remplacée.
+  - Barème en lignes déclaratives : chaque ligne porte un libellé, une assiette
+    (brut / t1 / t2 / t1t2), un taux salarial, un taux patronal et une condition
+    optionnelle (cadre / nonCadre / brutSuperieurPmss). calcul.ts est un moteur
+    générique qui itère sur les lignes et applique l'assiette ; plus aucune
+    assiette codée en dur ligne par ligne.
+  - Tranches : PMSS = 4005, T1 = min(brut, PMSS), T2 = max(0, brut - PMSS).
+  - CSG/CRDS au légal : assiette = 98,25% du brut plafonné à 4 PMSS + 100% de la
+    part au-delà + parts patronales réintégrées (prévoyance + mutuelle). Plus de
+    facteurs d'abattement par statut ni de bases CSG en dur (3990 / 3940 supprimés).
+  - La mutuelle est désormais une entrée du moteur (EntreeSalarie.mutuellePart-
+    Patronale / mutuellePartSalariale, en euros, défaut 0). Seule la part
+    patronale entre dans l'assiette CSG à ce stade.
+  - Réduction générale dégressive (RGDU) dans une fonction pure isolée
+    calculerRgdu : SMIC RGDU gelé à 12,02 pour 2026, garde-fous (0 au-delà de
+    3 SMIC, plafond Tmin+Tdelta = 0,3981). Allègement affiché comme ligne
+    patronale négative ; plus d'allègement en dur à 158.
+  - Nouveau barème daté src/engine/baremes/syntec-2026-06.ts (SMIC réel changé au
+    1er juin 2026). L'index pointe dessus par défaut. L'ancien fichier
+    syntec-2026-01.ts est conservé mais dérive désormais du 2026-06 (mêmes taux,
+    même SMIC RGDU 12,02), pour la continuité de l'UI.
+  - Tous les taux portent un commentaire "A VALIDER par expert-comptable".
+  - Tests : 20 tests STRUCTURELS verts (présence des lignes, assiettes, invariant
+    T1+T2=brut, lignes T2 nulles sous PMSS, garde-fous RGDU). Les anciens tests
+    SimulPaie (netSocial 3159.61, coûtEmployeur 5588.08, base CSG 3940, etc.) ont
+    été supprimés.
+  - RESTE À FAIRE : figer les montants exacts après validation visuelle d'un
+    bulletin de référence ; faire pointer l'UI sur syntec-2026-06.
 - Affichage du bulletin : src/pages/BulletinPage.tsx (route protégée /bulletin,
   lien depuis la home). Formulaire réactif (statut, brut, taux AT/MP, heures,
   barème en lecture seule) branché sur le moteur. Toute la logique de calcul

@@ -8,7 +8,7 @@ export type Statut = "cadre" | "etam";
 
 // Couche 1 : reference du bareme legal a appliquer (versionne par date).
 export interface EntreeLegal {
-  // Reference d'un bareme date, ex "syntec-2026-01".
+  // Reference d'un bareme date, ex "syntec-2026-06".
   bareme: string;
 }
 
@@ -24,6 +24,13 @@ export interface EntreeSalarie {
   statut: Statut;
   // Salaire de base brut mensuel en euros.
   brutMensuel: number;
+  // Part patronale de la mutuelle en euros (defaut 0). Reintegree a 100 % dans
+  // l'assiette CSG/CRDS. A VALIDER par expert-comptable.
+  mutuellePartPatronale?: number;
+  // Part salariale de la mutuelle en euros (defaut 0). Reservee pour une future
+  // ligne de retenue (non encore deduite du net a ce stade du proto).
+  // A VALIDER par expert-comptable.
+  mutuellePartSalariale?: number;
 }
 
 // Couche 4 : donnees mensuelles / variables.
@@ -41,46 +48,71 @@ export interface EntreeBulletin {
 
 // --- BAREME (couche 1, versionne par date d'application) ---
 
-// Tous les taux sont exprimes en pourcentage (ex 6.90 pour 6,90 %).
-export interface BaremeSalariales {
-  ssDeplafonnee: number;
-  ssPlafonnee: number;
-  retraiteComplTrancheA: number;
-  chomageApec: number;
-  // Prevoyance non cadre Tranche A, part salariale (ne s'applique qu'aux etam).
-  prevoyanceNonCadreTrancheA: number;
-  csgNonImposable: number;
-  csgCrdsImposable: number;
-  // Facteur d'abattement de la base CSG/CRDS pour un cadre, ex 0.9975.
-  abattementCsg: number;
-  // Facteur d'abattement de la base CSG/CRDS pour un non cadre (etam).
-  // Cale sur SimulPaie, voir commentaire dans calcul.ts (assiette a confirmer).
-  abattementCsgNonCadre: number;
+// Assiette d'une ligne de cotisation. Le moteur derive le montant a partir du
+// brut et des tranches : T1 = min(brut, PMSS), T2 = max(0, brut - PMSS).
+//   "brut"  -> brut entier
+//   "t1"    -> T1
+//   "t2"    -> T2
+//   "t1t2"  -> T1 + T2 (egal au brut, sauf plafonnement eventuel)
+export type Assiette = "brut" | "t1" | "t2" | "t1t2";
+
+// Condition d'application d'une ligne, portee par la donnee (pas codee en dur).
+//   "cadre"             -> ligne appliquee seulement si statut cadre
+//   "nonCadre"          -> ligne appliquee seulement si statut etam
+//   "brutSuperieurPmss" -> ligne appliquee seulement si brut > PMSS (ex CET)
+export type Condition = "cadre" | "nonCadre" | "brutSuperieurPmss";
+
+// Une ligne declarative du bareme. Le moteur de calcul est generique : il itere
+// sur ces lignes et applique l'assiette. Aucune assiette n'est codee en dur dans
+// calcul.ts. Tous les taux sont en pourcentage (ex 6.90 pour 6,90 %).
+export interface LigneBareme {
+  libelle: string;
+  assiette: Assiette;
+  // Taux salarial en pourcentage (peut etre 0 : ligne purement patronale).
+  tauxSalarial: number;
+  // Taux patronal en pourcentage (peut etre 0 : ligne purement salariale).
+  tauxPatronal: number;
+  // Condition optionnelle portee par la donnee (voir type Condition).
+  condition?: Condition;
+  // Plafonnement de l'assiette exprime en nombre de PMSS (ex 4 pour le chomage
+  // et l'AGS, plafonnes a 4 PMSS).
+  plafondPmss?: number;
+  // Si vrai, le taux patronal effectif est le taux AT/MP saisi par l'entreprise
+  // (EntreeEntreprise.tauxAtMp), et non le tauxPatronal du bareme.
+  tauxPatronalDepuisEntreprise?: boolean;
+  // Si vrai, la part patronale de cette ligne est reintegree a 100 % dans
+  // l'assiette CSG/CRDS (ex prevoyance).
+  reintegrerCsg?: boolean;
+  // Si "csgCrds", la base n'est pas derivee de l'assiette ci-dessus mais de
+  // l'assiette CSG/CRDS legale calculee par le moteur (voir calcul.ts).
+  baseSpeciale?: "csgCrds";
 }
 
-export interface BaremePatronales {
-  santeMaladie: number;
-  prevoyanceCadreTrancheA: number;
-  // Prevoyance non cadre Tranche A, part patronale (ne s'applique qu'aux etam).
-  prevoyanceNonCadreTrancheA: number;
-  ssDeplafonnee: number;
-  ssPlafonnee: number;
-  retraiteComplTrancheA: number;
-  famille: number;
-  assuranceChomage: number;
-  chomageAgs: number;
-  apec: number;
-  autresContributions: number;
+// Parametres du calcul de la reduction generale degressive (RGDU / ex Fillon).
+// Tous A VALIDER par expert-comptable.
+export interface ParamsRgdu {
+  // Coefficient minimum, ex 0.0200.
+  tmin: number;
+  // Coefficient delta (entreprise de moins de 50 salaries, FNAL 0.10 %),
+  // ex 0.3781.
+  tdelta: number;
+  // Exposant de la formule, ex 1.75.
+  p: number;
+  // SMIC annuel de reference pour la RGDU. Gele a 12.02 EUR pour 2026, distinct
+  // du SMIC reel (12.31 EUR). Calcul : 151.67 * 12.02 * 12.
+  smicAnnuelRgdu: number;
 }
 
 export interface Bareme {
   reference: string;
   // Date d'application au format ISO (AAAA-MM-JJ).
   dateApplication: string;
-  salariales: BaremeSalariales;
-  patronales: BaremePatronales;
-  // Allegement general des cotisations patronales en euros.
-  allegementCotisations: number;
+  // Plafond mensuel de la securite sociale en euros (ex 4005).
+  pmss: number;
+  // Lignes declaratives de cotisation (voir LigneBareme).
+  lignes: LigneBareme[];
+  // Parametres de la reduction generale degressive.
+  rgdu: ParamsRgdu;
 }
 
 // --- FORMAT DE SORTIE : le bulletin calcule ---
@@ -101,6 +133,8 @@ export interface BulletinCalcule {
   lignesPatronales: LigneCotisation[];
   totalRetenuesSalariales: number;
   totalCotisationsPatronales: number;
+  // Montant de l'allegement general (positif), egalement present comme ligne
+  // patronale negative dans lignesPatronales.
   allegementCotisations: number;
   netSocial: number;
   netAPayerAvantImpot: number;

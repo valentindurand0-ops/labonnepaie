@@ -1,28 +1,35 @@
 import type {
+  Assiette,
   Bareme,
   BulletinCalcule,
   EntreeBulletin,
+  LigneBareme,
   LigneCotisation,
+  ParamsRgdu,
 } from "./types";
 
 // Libelles des lignes de cotisation. Centralises ici pour rester coherents
-// entre le calcul et les tests. Aucun tiret cadratin.
+// entre le bareme, le calcul et les tests. Aucun tiret cadratin.
 export const LIBELLES = {
-  ssDeplafonnee: "Securite sociale deplafonnee",
-  ssPlafonnee: "Securite sociale plafonnee",
-  retraiteTrancheA: "Retraite complementaire Tranche A",
-  chomageApec: "Chomage APEC",
-  prevoyanceNonCadre: "Prevoyance non cadre Tranche A",
-  csgNonImposable: "CSG non imposable",
-  csgCrdsImposable: "CSG/CRDS imposable",
-  santeMaladie: "Sante maladie",
-  prevoyanceCadre: "Prevoyance cadre Tranche A",
-  atMp: "AT/MP",
-  famille: "Famille",
-  assuranceChomage: "Assurance chomage",
-  chomageAgs: "Chomage AGS",
+  vieillessePlafonnee: "Vieillesse plafonnee",
+  vieillesseDeplafonnee: "Vieillesse deplafonnee",
+  maladie: "Maladie",
+  famille: "Allocations familiales",
+  retraiteT1: "Retraite complementaire Agirc-Arrco T1",
+  retraiteT2: "Retraite complementaire Agirc-Arrco T2",
+  cegT1: "CEG T1",
+  cegT2: "CEG T2",
+  cet: "CET",
   apec: "APEC",
-  autresContributions: "Autres contributions employeur",
+  chomage: "Assurance chomage",
+  ags: "AGS",
+  atMp: "AT/MP",
+  fnal: "FNAL",
+  prevoyanceCadre: "Prevoyance cadre T1",
+  prevoyanceNonCadre: "Prevoyance non cadre",
+  csgDeductible: "CSG deductible",
+  csgCrdsNonDeductible: "CSG/CRDS non deductible",
+  allegementGeneral: "Allegement general (reduction generale)",
 } as const;
 
 // Arrondi au centime. Le moteur arrondit chaque montant de ligne, puis somme
@@ -31,7 +38,7 @@ function arrondirCentime(valeur: number): number {
   return Math.round((valeur + Number.EPSILON) * 100) / 100;
 }
 
-// Construit une ligne de cotisation a partir d'une base et d'un taux en pourcentage.
+// Construit une ligne de sortie a partir d'une base et d'un taux en pourcentage.
 function ligne(libelle: string, base: number, taux: number): LigneCotisation {
   return {
     libelle,
@@ -42,13 +49,88 @@ function ligne(libelle: string, base: number, taux: number): LigneCotisation {
 }
 
 function sommeMontants(lignes: LigneCotisation[]): number {
-  return arrondirCentime(
-    lignes.reduce((total, l) => total + l.montant, 0),
-  );
+  return arrondirCentime(lignes.reduce((total, l) => total + l.montant, 0));
+}
+
+// Resout le montant d'assiette d'une ligne a partir du brut et des tranches.
+function montantAssiette(
+  assiette: Assiette,
+  brut: number,
+  t1: number,
+  t2: number,
+): number {
+  switch (assiette) {
+    case "brut":
+      return brut;
+    case "t1":
+      return t1;
+    case "t2":
+      return t2;
+    case "t1t2":
+      return t1 + t2;
+  }
+}
+
+// Verifie si la condition d'une ligne est remplie pour ce salarie / ce brut.
+function conditionRemplie(
+  ligneBareme: LigneBareme,
+  estCadre: boolean,
+  brut: number,
+  pmss: number,
+): boolean {
+  switch (ligneBareme.condition) {
+    case undefined:
+      return true;
+    case "cadre":
+      return estCadre;
+    case "nonCadre":
+      return !estCadre;
+    case "brutSuperieurPmss":
+      return brut > pmss;
+  }
+}
+
+// Fonction PURE isolee : calcul du coefficient de reduction generale degressive
+// (RGDU, ex reduction Fillon). Retourne le coefficient C arrondi a 4 decimales.
+//
+// Formule : C = Tmin + Tdelta * ( 0.5 * (3 * smicAnnuelRgdu / remuAnnuelle - 1) ) ^ P
+// avec deux garde-fous indispensables :
+//   1. si remuAnnuelle >= 3 * smicAnnuelRgdu  ->  C = 0
+//   2. C plafonne a Tmin + Tdelta, et plancher a 0 si negatif
+//
+// NOTE proto : ici remuAnnuelle = brutMensuel * 12. Le VRAI calcul est annuel et
+// cumulatif (somme des bruts de l'annee civile). Quand les cumuls multi bulletins
+// arriveront, seul l'argument remuAnnuelle changera, pas cette fonction.
+export function calculerRgdu(
+  remuAnnuelle: number,
+  smicAnnuelRgdu: number,
+  params: Pick<ParamsRgdu, "tmin" | "tdelta" | "p">,
+): number {
+  const { tmin, tdelta, p } = params;
+  const plafond = tmin + tdelta;
+  // Garde-fou division et remuneration nulle.
+  if (remuAnnuelle <= 0) {
+    return 0;
+  }
+  // Garde-fou 1 : au-dela de 3 SMIC, plus aucun allegement.
+  if (remuAnnuelle >= 3 * smicAnnuelRgdu) {
+    return 0;
+  }
+  const ratio = 0.5 * ((3 * smicAnnuelRgdu) / remuAnnuelle - 1);
+  let c = tmin + tdelta * Math.pow(ratio, p);
+  // Garde-fou 2 : plafond a Tmin + Tdelta, plancher a 0.
+  if (c > plafond) {
+    c = plafond;
+  }
+  if (c < 0) {
+    c = 0;
+  }
+  return Math.round(c * 10000) / 10000;
 }
 
 // Fonction PURE : (entree, bareme) -> bulletin calcule.
-// Ne lit ni n'ecrit aucun etat externe.
+// Moteur generique : il itere sur les lignes declaratives du bareme et applique
+// l'assiette et les conditions. Aucune assiette codee en dur ligne par ligne.
 export function calculerBulletin(
   entree: EntreeBulletin,
   bareme: Bareme,
@@ -59,110 +141,114 @@ export function calculerBulletin(
     );
   }
 
-  const brutTotal = entree.salarie.brutMensuel;
+  const brut = entree.salarie.brutMensuel;
   const estCadre = entree.salarie.statut === "cadre";
+  const pmss = bareme.pmss;
 
-  const { salariales, patronales } = bareme;
+  // Tranches : T1 = part du brut sous le PMSS, T2 = part au-dessus.
+  const t1 = Math.min(brut, pmss);
+  const t2 = Math.max(0, brut - pmss);
 
-  // Base abattue pour la CSG/CRDS. Le facteur d'abattement depend du statut :
-  // - cadre : 0.25 % (brut x 0.9975 = 3990 pour 4000), aligne sur SimulPaie ;
-  // - non cadre (etam) : base calee sur SimulPaie (brut x 0.985 = 3940 pour 4000),
-  //   soit un abattement effectif de 1.50 %.
-  // ATTENTION : base CSG non cadre CALEE SUR SIMULPAIE, logique d'assiette
-  // (notamment la reintegration de la prevoyance) A CONFIRMER PAR EXPERT-COMPTABLE.
-  // PRIORITE HAUTE. La valeur n'est pas codee en dur : elle derive du brut via le
-  // facteur d'abattement du bareme, distinct selon le statut.
-  const facteurAbattementCsg = estCadre
-    ? salariales.abattementCsg
-    : salariales.abattementCsgNonCadre;
-  const baseCsg = arrondirCentime(brutTotal * facteurAbattementCsg);
+  // Parts mutuelle (defaut 0). Seule la part patronale entre dans l'assiette CSG.
+  const mutuellePartPatronale = entree.salarie.mutuellePartPatronale ?? 0;
 
-  // --- Cotisations salariales ---
-  const lignesSalariales: LigneCotisation[] = [
-    ligne(LIBELLES.ssDeplafonnee, brutTotal, salariales.ssDeplafonnee),
-    ligne(LIBELLES.ssPlafonnee, brutTotal, salariales.ssPlafonnee),
-    ligne(LIBELLES.retraiteTrancheA, brutTotal, salariales.retraiteComplTrancheA),
-  ];
-  // La prevoyance non cadre Tranche A ne concerne que les non-cadres (etam).
-  // Symetrique de la prevoyance cadre : un non-cadre n'a jamais de prevoyance
-  // cadre et inversement.
-  if (!estCadre) {
-    lignesSalariales.push(
-      ligne(
-        LIBELLES.prevoyanceNonCadre,
-        brutTotal,
-        salariales.prevoyanceNonCadreTrancheA,
-      ),
-    );
+  const lignesSalariales: LigneCotisation[] = [];
+  const lignesPatronales: LigneCotisation[] = [];
+  // Les lignes CSG/CRDS sont traitees en second passage : leur base depend des
+  // parts patronales reintegrees (prevoyance, mutuelle), donc des autres lignes.
+  const lignesCsg: LigneBareme[] = [];
+  // Cumul des parts patronales reintegrees a 100 % dans l'assiette CSG.
+  let reintegrationCsg = 0;
+
+  for (const l of bareme.lignes) {
+    if (!conditionRemplie(l, estCadre, brut, pmss)) {
+      continue;
+    }
+    if (l.baseSpeciale === "csgCrds") {
+      lignesCsg.push(l);
+      continue;
+    }
+
+    let base = montantAssiette(l.assiette, brut, t1, t2);
+    if (l.plafondPmss != null) {
+      base = Math.min(base, l.plafondPmss * pmss);
+    }
+
+    const tauxPatronal = l.tauxPatronalDepuisEntreprise
+      ? entree.entreprise.tauxAtMp
+      : l.tauxPatronal;
+
+    if (l.tauxSalarial !== 0) {
+      lignesSalariales.push(ligne(l.libelle, base, l.tauxSalarial));
+    }
+    if (tauxPatronal !== 0) {
+      const lp = ligne(l.libelle, base, tauxPatronal);
+      lignesPatronales.push(lp);
+      if (l.reintegrerCsg) {
+        reintegrationCsg += lp.montant;
+      }
+    }
   }
-  // L'APEC ne concerne que les cadres.
-  if (estCadre) {
-    lignesSalariales.push(
-      ligne(LIBELLES.chomageApec, brutTotal, salariales.chomageApec),
-    );
-  }
-  lignesSalariales.push(
-    ligne(LIBELLES.csgNonImposable, baseCsg, salariales.csgNonImposable),
-    ligne(LIBELLES.csgCrdsImposable, baseCsg, salariales.csgCrdsImposable),
+
+  // Assiette CSG/CRDS legale :
+  //   98.25 % du brut dans la limite de 4 PMSS  (abattement 1.75 % plafonne)
+  // + 100 % de la part du brut au-dela de 4 PMSS
+  // + parts patronales reintegrees (prevoyance) + part patronale mutuelle.
+  // A VALIDER par expert-comptable (perimetre exact des reintegrations).
+  const plafond4Pmss = 4 * pmss;
+  const brutPlafonne = Math.min(brut, plafond4Pmss);
+  const brutAuDela = Math.max(0, brut - plafond4Pmss);
+  const baseCsg = arrondirCentime(
+    0.9825 * brutPlafonne + brutAuDela + reintegrationCsg + mutuellePartPatronale,
   );
+  for (const l of lignesCsg) {
+    if (l.tauxSalarial !== 0) {
+      lignesSalariales.push(ligne(l.libelle, baseCsg, l.tauxSalarial));
+    }
+    if (l.tauxPatronal !== 0) {
+      lignesPatronales.push(ligne(l.libelle, baseCsg, l.tauxPatronal));
+    }
+  }
 
-  // --- Cotisations patronales ---
-  const lignesPatronales: LigneCotisation[] = [
-    ligne(LIBELLES.santeMaladie, brutTotal, patronales.santeMaladie),
-  ];
-  // Prevoyance Tranche A patronale, symetrique selon le statut : prevoyance cadre
-  // (1.50 %) pour un cadre, prevoyance non cadre (0.250 %) pour un etam.
-  if (estCadre) {
-    lignesPatronales.push(
-      ligne(LIBELLES.prevoyanceCadre, brutTotal, patronales.prevoyanceCadreTrancheA),
-    );
-  } else {
-    lignesPatronales.push(
-      ligne(
-        LIBELLES.prevoyanceNonCadre,
-        brutTotal,
-        patronales.prevoyanceNonCadreTrancheA,
-      ),
-    );
-  }
-  lignesPatronales.push(
-    ligne(LIBELLES.atMp, brutTotal, entree.entreprise.tauxAtMp),
-    ligne(LIBELLES.ssDeplafonnee, brutTotal, patronales.ssDeplafonnee),
-    ligne(LIBELLES.ssPlafonnee, brutTotal, patronales.ssPlafonnee),
-    ligne(LIBELLES.retraiteTrancheA, brutTotal, patronales.retraiteComplTrancheA),
-    ligne(LIBELLES.famille, brutTotal, patronales.famille),
-    ligne(LIBELLES.assuranceChomage, brutTotal, patronales.assuranceChomage),
-    ligne(LIBELLES.chomageAgs, brutTotal, patronales.chomageAgs),
+  // Reduction generale degressive (RGDU). Imputee uniquement sur les cotisations
+  // patronales concernees (maladie, allocations familiales, vieillesse plafonnee
+  // et deplafonnee, retraite complementaire, CEG, chomage, FNAL). Le montant
+  // global est affiche comme une seule ligne patronale negative.
+  const remuAnnuelle = brut * 12; // proto mono-bulletin, voir calculerRgdu.
+  const coefficientRgdu = calculerRgdu(
+    remuAnnuelle,
+    bareme.rgdu.smicAnnuelRgdu,
+    bareme.rgdu,
   );
-  // L'APEC patronale ne concerne que les cadres.
-  if (estCadre) {
-    lignesPatronales.push(ligne(LIBELLES.apec, brutTotal, patronales.apec));
+  const montantAllegement = arrondirCentime(coefficientRgdu * brut);
+  if (montantAllegement !== 0) {
+    lignesPatronales.push({
+      libelle: LIBELLES.allegementGeneral,
+      base: brut,
+      taux: -(coefficientRgdu * 100),
+      montant: -montantAllegement,
+    });
   }
-  lignesPatronales.push(
-    ligne(LIBELLES.autresContributions, brutTotal, patronales.autresContributions),
-  );
 
   const totalRetenuesSalariales = sommeMontants(lignesSalariales);
   const totalCotisationsPatronales = sommeMontants(lignesPatronales);
-  const allegementCotisations = bareme.allegementCotisations;
 
   // Net social : brut moins les retenues salariales.
-  const netSocial = arrondirCentime(brutTotal - totalRetenuesSalariales);
+  const netSocial = arrondirCentime(brut - totalRetenuesSalariales);
   // Pas d'autre element (prime, absence, frais) a ce stade.
   const netAPayerAvantImpot = netSocial;
 
-  // Cout total employeur : brut + cotisations patronales - allegement.
-  const coutTotalEmployeur = arrondirCentime(
-    brutTotal + totalCotisationsPatronales - allegementCotisations,
-  );
+  // Cout total employeur : brut + cotisations patronales (l'allegement est deja
+  // compris, en negatif, dans totalCotisationsPatronales).
+  const coutTotalEmployeur = arrondirCentime(brut + totalCotisationsPatronales);
 
   return {
-    brutTotal,
+    brutTotal: brut,
     lignesSalariales,
     lignesPatronales,
     totalRetenuesSalariales,
     totalCotisationsPatronales,
-    allegementCotisations,
+    allegementCotisations: montantAllegement,
     netSocial,
     netAPayerAvantImpot,
     coutTotalEmployeur,
