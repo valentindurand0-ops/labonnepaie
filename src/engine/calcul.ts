@@ -12,6 +12,7 @@ export const LIBELLES = {
   ssPlafonnee: "Securite sociale plafonnee",
   retraiteTrancheA: "Retraite complementaire Tranche A",
   chomageApec: "Chomage APEC",
+  prevoyanceNonCadre: "Prevoyance non cadre Tranche A",
   csgNonImposable: "CSG non imposable",
   csgCrdsImposable: "CSG/CRDS imposable",
   santeMaladie: "Sante maladie",
@@ -63,8 +64,18 @@ export function calculerBulletin(
 
   const { salariales, patronales } = bareme;
 
-  // Base abattue pour la CSG/CRDS.
-  const baseCsg = arrondirCentime(brutTotal * salariales.abattementCsg);
+  // Base abattue pour la CSG/CRDS. Le facteur d'abattement depend du statut :
+  // - cadre : 0.25 % (brut x 0.9975 = 3990 pour 4000), aligne sur SimulPaie ;
+  // - non cadre (etam) : base calee sur SimulPaie (brut x 0.985 = 3940 pour 4000),
+  //   soit un abattement effectif de 1.50 %.
+  // ATTENTION : base CSG non cadre CALEE SUR SIMULPAIE, logique d'assiette
+  // (notamment la reintegration de la prevoyance) A CONFIRMER PAR EXPERT-COMPTABLE.
+  // PRIORITE HAUTE. La valeur n'est pas codee en dur : elle derive du brut via le
+  // facteur d'abattement du bareme, distinct selon le statut.
+  const facteurAbattementCsg = estCadre
+    ? salariales.abattementCsg
+    : salariales.abattementCsgNonCadre;
+  const baseCsg = arrondirCentime(brutTotal * facteurAbattementCsg);
 
   // --- Cotisations salariales ---
   const lignesSalariales: LigneCotisation[] = [
@@ -72,6 +83,18 @@ export function calculerBulletin(
     ligne(LIBELLES.ssPlafonnee, brutTotal, salariales.ssPlafonnee),
     ligne(LIBELLES.retraiteTrancheA, brutTotal, salariales.retraiteComplTrancheA),
   ];
+  // La prevoyance non cadre Tranche A ne concerne que les non-cadres (etam).
+  // Symetrique de la prevoyance cadre : un non-cadre n'a jamais de prevoyance
+  // cadre et inversement.
+  if (!estCadre) {
+    lignesSalariales.push(
+      ligne(
+        LIBELLES.prevoyanceNonCadre,
+        brutTotal,
+        salariales.prevoyanceNonCadreTrancheA,
+      ),
+    );
+  }
   // L'APEC ne concerne que les cadres.
   if (estCadre) {
     lignesSalariales.push(
@@ -87,10 +110,19 @@ export function calculerBulletin(
   const lignesPatronales: LigneCotisation[] = [
     ligne(LIBELLES.santeMaladie, brutTotal, patronales.santeMaladie),
   ];
-  // La prevoyance cadre Tranche A ne concerne que les cadres.
+  // Prevoyance Tranche A patronale, symetrique selon le statut : prevoyance cadre
+  // (1.50 %) pour un cadre, prevoyance non cadre (0.250 %) pour un etam.
   if (estCadre) {
     lignesPatronales.push(
       ligne(LIBELLES.prevoyanceCadre, brutTotal, patronales.prevoyanceCadreTrancheA),
+    );
+  } else {
+    lignesPatronales.push(
+      ligne(
+        LIBELLES.prevoyanceNonCadre,
+        brutTotal,
+        patronales.prevoyanceNonCadreTrancheA,
+      ),
     );
   }
   lignesPatronales.push(

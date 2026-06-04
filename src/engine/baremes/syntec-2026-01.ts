@@ -13,16 +13,22 @@ export const baremeSyntec202601: Bareme = {
     ssPlafonnee: 6.9, // A VALIDER par expert-comptable
     retraiteComplTrancheA: 4.01, // A VALIDER par expert-comptable
     chomageApec: 0.024, // A VALIDER par expert-comptable
+    prevoyanceNonCadreTrancheA: 0.25, // A VALIDER par expert-comptable
     csgNonImposable: 6.8, // A VALIDER par expert-comptable
     csgCrdsImposable: 2.9, // A VALIDER par expert-comptable
     // Abattement de 0.25 % tel que vu sur SimulPaie, A VALIDER par expert-comptable
     // (le taux d'abattement legal de reference est 1.75 %).
     abattementCsg: 0.9975,
+    // Abattement CSG du non cadre cale sur SimulPaie (brut x 0.985 = 3940 pour
+    // 4000, soit un abattement de 1.50 %). A VALIDER par expert-comptable :
+    // l'assiette reelle (reintegration de la prevoyance) est a confirmer.
+    abattementCsgNonCadre: 0.985,
   },
 
   patronales: {
     santeMaladie: 13.0, // A VALIDER par expert-comptable
     prevoyanceCadreTrancheA: 1.5, // A VALIDER par expert-comptable
+    prevoyanceNonCadreTrancheA: 0.25, // A VALIDER par expert-comptable
     ssDeplafonnee: 2.11, // A VALIDER par expert-comptable
     ssPlafonnee: 8.55, // A VALIDER par expert-comptable
     retraiteComplTrancheA: 6.01, // A VALIDER par expert-comptable

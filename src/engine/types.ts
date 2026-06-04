@@ -47,15 +47,22 @@ export interface BaremeSalariales {
   ssPlafonnee: number;
   retraiteComplTrancheA: number;
   chomageApec: number;
+  // Prevoyance non cadre Tranche A, part salariale (ne s'applique qu'aux etam).
+  prevoyanceNonCadreTrancheA: number;
   csgNonImposable: number;
   csgCrdsImposable: number;
-  // Facteur d'abattement de la base CSG/CRDS, ex 0.9975.
+  // Facteur d'abattement de la base CSG/CRDS pour un cadre, ex 0.9975.
   abattementCsg: number;
+  // Facteur d'abattement de la base CSG/CRDS pour un non cadre (etam).
+  // Cale sur SimulPaie, voir commentaire dans calcul.ts (assiette a confirmer).
+  abattementCsgNonCadre: number;
 }
 
 export interface BaremePatronales {
   santeMaladie: number;
   prevoyanceCadreTrancheA: number;
+  // Prevoyance non cadre Tranche A, part patronale (ne s'applique qu'aux etam).
+  prevoyanceNonCadreTrancheA: number;
   ssDeplafonnee: number;
   ssPlafonnee: number;
   retraiteComplTrancheA: number;

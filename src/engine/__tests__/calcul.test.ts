@@ -7,6 +7,11 @@
 //   2. Abattement CSG : on suit pour l'instant SimulPaie (0.25 %, soit
 //      base = brut x 0.9975), alors que le taux d'abattement legal de
 //      reference est 1.75 %. A VALIDER par expert-comptable.
+//   3. Base CSG non cadre : pour un etam, SimulPaie donne une base de 3940
+//      (et non 3990), soit un abattement effectif de 1.50 %. Le moteur cale
+//      cette base sur SimulPaie via abattementCsgNonCadre. La logique d'assiette
+//      reelle (reintegration de la prevoyance) est A CONFIRMER par expert-comptable,
+//      PRIORITE HAUTE. Voir le cas etalon dans calcul.etam.test.ts.
 
 import { describe, it, expect } from "vitest";
 import { calculerBulletin, LIBELLES } from "../calcul";
