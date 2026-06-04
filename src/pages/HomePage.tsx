@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
 
 // Page d'accueil protegee. Volontairement vide pour l'instant :
@@ -19,6 +20,9 @@ export function HomePage() {
 
       <section className="home-content">
         <p>Vous etes connecte. Le contenu sera ajoute dans les prochaines etapes.</p>
+        <p>
+          <Link to="/bulletin">Voir un bulletin de paie</Link>
+        </p>
       </section>
     </main>
   );

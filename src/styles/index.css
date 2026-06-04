@@ -127,3 +127,98 @@ body {
   padding: 2rem 1.5rem;
   color: #6b7280;
 }
+
+/* Page bulletin */
+.bulletin-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.bulletin-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.bulletin-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.bulletin-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  color: #374151;
+}
+
+.bulletin-form input,
+.bulletin-form select {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.bulletin-form input[readonly] {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.bulletin-brut {
+  font-size: 1.1rem;
+}
+
+.bulletin-erreur {
+  padding: 0.75rem 1rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #b91c1c;
+}
+
+.bulletin-section {
+  margin: 1.5rem 0;
+}
+
+.bulletin-section h2 {
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.bulletin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  background: #ffffff;
+}
+
+.bulletin-table th,
+.bulletin-table td {
+  border: 1px solid #e5e7eb;
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+}
+
+.bulletin-table th {
+  background: #f9fafb;
+}
+
+.bulletin-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.bulletin-totaux td:first-child {
+  font-weight: 500;
+}

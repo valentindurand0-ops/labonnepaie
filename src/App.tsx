@@ -3,6 +3,7 @@ import { AuthProvider } from "./auth/AuthProvider";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { LoginPage } from "./pages/LoginPage";
 import { HomePage } from "./pages/HomePage";
+import { BulletinPage } from "./pages/BulletinPage";
 
 // Declaration des routes de l'application.
 // "/" est protegee, "/login" est publique.
@@ -17,6 +18,14 @@ export function App() {
             element={
               <ProtectedRoute>
                 <HomePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/bulletin"
+            element={
+              <ProtectedRoute>
+                <BulletinPage />
               </ProtectedRoute>
             }
           />
