@@ -110,8 +110,22 @@ l'affichage. Il doit être testable seul, avec des tests unitaires par règle de
     T1+T2=brut, lignes T2 nulles sous PMSS, garde-fous RGDU). Les anciens tests
     SimulPaie (netSocial 3159.61, coûtEmployeur 5588.08, base CSG 3940, etc.) ont
     été supprimés.
-  - RESTE À FAIRE : figer les montants exacts après validation visuelle d'un
-    bulletin de référence ; faire pointer l'UI sur syntec-2026-06.
+- ÉTAPE FAITE : trois bulletins témoins validés visuellement et figés au centime
+  (src/engine/__tests__/calcul.temoins.test.ts, 27 tests). Cas : cadre 4000,
+  ETAM 4000, cadre 4500. Paramètres communs AT/MP 1,00 % (VALEUR DE TEST, pas une
+  règle légale : le taux AT/MP est propre à chaque entreprise, notifié par la
+  CARSAT, saisi couche 2, A VALIDER), mutuelle 0/0, prévoyance défaut, barème
+  syntec-2026-06. Valeurs figées (extraits) : cadre 4000 -> net 3159,61 / cotis.
+  pat. 1512,24 / coût 5512,24 / CSG 3990 ; ETAM 4000 -> net 3160,90 / cotis. pat.
+  1455,80 / coût 5455,80 / CSG 3935 ; cadre 4500 -> T1 4005 / T2 495 / net 3554,86
+  / cotis. pat. 1756,45 / coût 6256,45 / CSG 4481,33 + ligne CET.
+  - RGDU CONFIRMÉ conforme à la formule officielle. À brut 4000 le coefficient est
+    0,0395 et l'allègement 158,00 : le 158 est une COÏNCIDENCE réelle (la réduction
+    générale légale vaut bien 158,00 à ce brut précis), pas un reliquat de l'ancien
+    montant en dur. À 4500 le coefficient tombe à 0,0277 (allègement 124,65).
+  - Suite complète : 47 tests verts (20 structurels + 27 témoins).
+  - RESTE À FAIRE : faire pointer l'UI sur syntec-2026-06 ; prochaine étape moteur =
+    cas de la PRIME (prime de vacances Syntec, exceptionnelle, 13e mois).
 - Affichage du bulletin : src/pages/BulletinPage.tsx (route protégée /bulletin,
   lien depuis la home). Formulaire réactif (statut, brut, taux AT/MP, heures,
   barème en lecture seule) branché sur le moteur. Toute la logique de calcul
