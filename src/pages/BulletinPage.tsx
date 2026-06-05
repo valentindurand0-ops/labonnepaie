@@ -70,6 +70,7 @@ export function BulletinPage() {
   const [brut, setBrut] = useState("4000");
   const [tauxAtMp, setTauxAtMp] = useState("1.4");
   const [heures, setHeures] = useState("151.67");
+  const [primeSoumise, setPrimeSoumise] = useState("0");
 
   // Recalcul reactif : a chaque changement de champ, on appelle le moteur.
   // Aucune logique de paie ici, seulement la validation de la saisie.
@@ -81,6 +82,7 @@ export function BulletinPage() {
       const brutNum = Number(brut);
       const tauxNum = Number(tauxAtMp);
       const heuresNum = Number(heures);
+      const primeNum = Number(primeSoumise);
 
       if (brut.trim() === "" || !Number.isFinite(brutNum) || brutNum <= 0) {
         throw new Error("Le brut mensuel doit etre un nombre strictement positif.");
@@ -91,12 +93,15 @@ export function BulletinPage() {
       if (heures.trim() === "" || !Number.isFinite(heuresNum) || heuresNum <= 0) {
         throw new Error("Le nombre d'heures doit etre un nombre strictement positif.");
       }
+      if (primeSoumise.trim() === "" || !Number.isFinite(primeNum) || primeNum < 0) {
+        throw new Error("La prime soumise doit etre un nombre positif ou nul.");
+      }
 
       const entree: EntreeBulletin = {
         legal: { bareme: REFERENCE_BAREME },
         entreprise: { tauxAtMp: tauxNum },
         salarie: { statut, brutMensuel: brutNum },
-        mensuel: { heures: heuresNum },
+        mensuel: { heures: heuresNum, primeSoumise: primeNum },
       };
 
       const bareme = getBareme(REFERENCE_BAREME);
@@ -105,7 +110,7 @@ export function BulletinPage() {
       const message = e instanceof Error ? e.message : "Erreur de calcul inconnue.";
       return { bulletin: null, erreur: message };
     }
-  }, [statut, brut, tauxAtMp, heures]);
+  }, [statut, brut, tauxAtMp, heures, primeSoumise]);
 
   return (
     <main className="bulletin-page">
@@ -156,6 +161,16 @@ export function BulletinPage() {
         </label>
 
         <label>
+          Prime soumise
+          <input
+            type="number"
+            step="0.01"
+            value={primeSoumise}
+            onChange={(e) => setPrimeSoumise(e.target.value)}
+          />
+        </label>
+
+        <label>
           Bareme
           <input type="text" value={REFERENCE_BAREME} readOnly />
         </label>
@@ -167,9 +182,27 @@ export function BulletinPage() {
         </p>
       ) : bulletin ? (
         <>
-          <p className="bulletin-brut">
-            Brut total : <strong>{formaterMontant(bulletin.brutTotal)}</strong>
-          </p>
+          <section className="bulletin-section">
+            <h2>Elements de brut</h2>
+            <table className="bulletin-table">
+              <tbody>
+                {bulletin.lignesBrut.map((g, i) => (
+                  <tr key={`${g.libelle}-${i}`}>
+                    <td>{g.libelle}</td>
+                    <td className="num">{formaterMontant(g.montant)}</td>
+                  </tr>
+                ))}
+                <tr>
+                  <td>
+                    <strong>Brut total soumis</strong>
+                  </td>
+                  <td className="num">
+                    <strong>{formaterMontant(bulletin.brutTotal)}</strong>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
 
           <TableLignes
             titre="Cotisations salariales"

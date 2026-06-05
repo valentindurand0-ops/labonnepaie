@@ -124,8 +124,21 @@ l'affichage. Il doit être testable seul, avec des tests unitaires par règle de
     générale légale vaut bien 158,00 à ce brut précis), pas un reliquat de l'ancien
     montant en dur. À 4500 le coefficient tombe à 0,0277 (allègement 124,65).
   - Suite complète : 47 tests verts (20 structurels + 27 témoins).
+- ÉTAPE FAITE : prime soumise générique. EntreeMensuel.primeSoumise (défaut 0)
+  s'ajoute au salaire de base pour former le brut soumis ; toute la cascade
+  (tranches T1/T2, cotisations, CSG, RGDU, net) en découle sans logique dupliquée.
+  Nouveau type LigneGain et champ BulletinCalcule.lignesBrut (composition du brut :
+  salaire de base + primes). UI : champ "Prime soumise" et section "Elements de
+  brut" dans BulletinPage. Verrouillée par un test d'ÉQUIVALENCE (pas de montants
+  recopiés) : cadre 4000 + prime 500 == témoin cadre 4500 au centime
+  (src/engine/__tests__/calcul.prime.test.ts). Suite complète : 59 tests verts.
+  - IMPERFECTION CONNUE documentée (commentaire dans calcul.ts, A CORRIGER avec les
+    cumuls) : la RGDU estime la rémunération annuelle par brut mensuel x 12, donc
+    une prime ponctuelle est comptée 12 fois et baisse à tort le coefficient RGDU
+    du mois de prime. Sera corrigé par le vrai calcul annuel cumulatif.
   - RESTE À FAIRE : faire pointer l'UI sur syntec-2026-06 ; prochaine étape moteur =
-    cas de la PRIME (prime de vacances Syntec, exceptionnelle, 13e mois).
+    prime de vacances Syntec (10 % de l'indemnité de congés payés, versée vers
+    juin), qui se posera par-dessus ce socle de prime soumise générique.
 - Affichage du bulletin : src/pages/BulletinPage.tsx (route protégée /bulletin,
   lien depuis la home). Formulaire réactif (statut, brut, taux AT/MP, heures,
   barème en lecture seule) branché sur le moteur. Toute la logique de calcul

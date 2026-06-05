@@ -13,6 +13,7 @@ export type {
   ParamsRgdu,
   Bareme,
   LigneCotisation,
+  LigneGain,
   BulletinCalcule,
 } from "./types";
 

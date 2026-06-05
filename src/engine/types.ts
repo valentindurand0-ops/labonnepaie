@@ -37,6 +37,10 @@ export interface EntreeSalarie {
 export interface EntreeMensuel {
   // Nombre d'heures du mois, ex 151.67. Pas d'autre variable pour l'instant.
   heures: number;
+  // Prime soumise a cotisations, en euros (defaut 0). Saisie par l'utilisateur.
+  // Elle s'ajoute au salaire de base pour former le brut soumis : tout le calcul
+  // (tranches T1/T2, cotisations, CSG, RGDU, net) en decoule.
+  primeSoumise?: number;
 }
 
 export interface EntreeBulletin {
@@ -127,8 +131,19 @@ export interface LigneCotisation {
   montant: number;
 }
 
+// Element constitutif du brut (un gain, pas une retenue) : salaire de base,
+// prime soumise, etc. La somme des montants est egale au brut soumis.
+export interface LigneGain {
+  libelle: string;
+  // Montant en euros, arrondi au centime.
+  montant: number;
+}
+
 export interface BulletinCalcule {
   brutTotal: number;
+  // Composition du brut soumis (salaire de base + primes soumises). La somme des
+  // montants est egale a brutTotal.
+  lignesBrut: LigneGain[];
   lignesSalariales: LigneCotisation[];
   lignesPatronales: LigneCotisation[];
   totalRetenuesSalariales: number;

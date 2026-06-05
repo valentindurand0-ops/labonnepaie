@@ -5,6 +5,7 @@ import type {
   EntreeBulletin,
   LigneBareme,
   LigneCotisation,
+  LigneGain,
   ParamsRgdu,
 } from "./types";
 
@@ -30,6 +31,8 @@ export const LIBELLES = {
   csgDeductible: "CSG deductible",
   csgCrdsNonDeductible: "CSG/CRDS non deductible",
   allegementGeneral: "Allegement general (reduction generale)",
+  salaireBase: "Salaire de base",
+  primeSoumise: "Prime soumise",
 } as const;
 
 // Arrondi au centime. Le moteur arrondit chaque montant de ligne, puis somme
@@ -141,9 +144,23 @@ export function calculerBulletin(
     );
   }
 
-  const brut = entree.salarie.brutMensuel;
+  // Brut soumis a cotisations = salaire de base + prime soumise du mois. TOUT le
+  // calcul (tranches T1/T2, cotisations, CSG, RGDU, net) decoule de ce brut, sans
+  // logique en double : il suffit que la prime entre ici.
+  const salaireBase = entree.salarie.brutMensuel;
+  const primeSoumise = entree.mensuel.primeSoumise ?? 0;
+  const brut = arrondirCentime(salaireBase + primeSoumise);
   const estCadre = entree.salarie.statut === "cadre";
   const pmss = bareme.pmss;
+
+  // Composition du brut, affichee comme des gains distincts (lisibilite). La
+  // prime n'apparait que si elle est non nulle.
+  const lignesBrut: LigneGain[] = [
+    { libelle: LIBELLES.salaireBase, montant: salaireBase },
+  ];
+  if (primeSoumise !== 0) {
+    lignesBrut.push({ libelle: LIBELLES.primeSoumise, montant: primeSoumise });
+  }
 
   // Tranches : T1 = part du brut sous le PMSS, T2 = part au-dessus.
   const t1 = Math.min(brut, pmss);
@@ -214,6 +231,13 @@ export function calculerBulletin(
   // patronales concernees (maladie, allocations familiales, vieillesse plafonnee
   // et deplafonnee, retraite complementaire, CEG, chomage, FNAL). Le montant
   // global est affiche comme une seule ligne patronale negative.
+  // IMPERFECTION CONNUE du proto mono-bulletin (a corriger avec les cumuls
+  // annuels, ne PAS corriger maintenant) : la RGDU se calcule sur la remuneration
+  // ANNUELLE, estimee ici par brut mensuel x 12. Or le brut du mois inclut la
+  // prime soumise. Une prime PONCTUELLE est donc comptee douze fois, ce qui gonfle
+  // la remuneration annuelle estimee et fait baisser A TORT le coefficient RGDU du
+  // mois de prime. Le vrai calcul annuel cumulatif (somme reelle des bruts de
+  // l'annee) corrigera ce biais ; seul l'argument remuAnnuelle changera.
   const remuAnnuelle = brut * 12; // proto mono-bulletin, voir calculerRgdu.
   const coefficientRgdu = calculerRgdu(
     remuAnnuelle,
@@ -244,6 +268,7 @@ export function calculerBulletin(
 
   return {
     brutTotal: brut,
+    lignesBrut,
     lignesSalariales,
     lignesPatronales,
     totalRetenuesSalariales,
