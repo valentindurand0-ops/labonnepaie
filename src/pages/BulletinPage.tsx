@@ -71,6 +71,7 @@ export function BulletinPage() {
   const [tauxAtMp, setTauxAtMp] = useState("1.4");
   const [heures, setHeures] = useState("151.67");
   const [primeSoumise, setPrimeSoumise] = useState("0");
+  const [joursConges, setJoursConges] = useState("0");
 
   // Recalcul reactif : a chaque changement de champ, on appelle le moteur.
   // Aucune logique de paie ici, seulement la validation de la saisie.
@@ -83,6 +84,7 @@ export function BulletinPage() {
       const tauxNum = Number(tauxAtMp);
       const heuresNum = Number(heures);
       const primeNum = Number(primeSoumise);
+      const joursCongesNum = Number(joursConges);
 
       if (brut.trim() === "" || !Number.isFinite(brutNum) || brutNum <= 0) {
         throw new Error("Le brut mensuel doit etre un nombre strictement positif.");
@@ -96,12 +98,23 @@ export function BulletinPage() {
       if (primeSoumise.trim() === "" || !Number.isFinite(primeNum) || primeNum < 0) {
         throw new Error("La prime soumise doit etre un nombre positif ou nul.");
       }
+      if (
+        joursConges.trim() === "" ||
+        !Number.isFinite(joursCongesNum) ||
+        joursCongesNum < 0
+      ) {
+        throw new Error("Les jours de conges doivent etre un nombre positif ou nul.");
+      }
 
       const entree: EntreeBulletin = {
         legal: { bareme: REFERENCE_BAREME },
         entreprise: { tauxAtMp: tauxNum },
         salarie: { statut, brutMensuel: brutNum },
-        mensuel: { heures: heuresNum, primeSoumise: primeNum },
+        mensuel: {
+          heures: heuresNum,
+          primeSoumise: primeNum,
+          joursConges: joursCongesNum,
+        },
       };
 
       const bareme = getBareme(REFERENCE_BAREME);
@@ -110,7 +123,7 @@ export function BulletinPage() {
       const message = e instanceof Error ? e.message : "Erreur de calcul inconnue.";
       return { bulletin: null, erreur: message };
     }
-  }, [statut, brut, tauxAtMp, heures, primeSoumise]);
+  }, [statut, brut, tauxAtMp, heures, primeSoumise, joursConges]);
 
   return (
     <main className="bulletin-page">
@@ -167,6 +180,16 @@ export function BulletinPage() {
             step="0.01"
             value={primeSoumise}
             onChange={(e) => setPrimeSoumise(e.target.value)}
+          />
+        </label>
+
+        <label>
+          Jours de conges
+          <input
+            type="number"
+            step="1"
+            value={joursConges}
+            onChange={(e) => setJoursConges(e.target.value)}
           />
         </label>
 

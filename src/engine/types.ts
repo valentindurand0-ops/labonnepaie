@@ -41,6 +41,12 @@ export interface EntreeMensuel {
   // Elle s'ajoute au salaire de base pour former le brut soumis : tout le calcul
   // (tranches T1/T2, cotisations, CSG, RGDU, net) en decoule.
   primeSoumise?: number;
+  // Nombre de jours de conges payes pris dans le mois (defaut 0). Methode du
+  // MAINTIEN DE SALAIRE : le brut soumis ne bouge pas, on le decompose seulement
+  // (retenue d'absence puis indemnite de conges du meme montant, somme nulle).
+  // La regle du dixieme et le comparatif du plus favorable au salarie ne sont PAS
+  // geres dans le proto mono-bulletin : ils viendront avec les cumuls annuels.
+  joursConges?: number;
 }
 
 export interface EntreeBulletin {

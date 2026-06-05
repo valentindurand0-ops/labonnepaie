@@ -33,7 +33,16 @@ export const LIBELLES = {
   allegementGeneral: "Allegement general (reduction generale)",
   salaireBase: "Salaire de base",
   primeSoumise: "Prime soumise",
+  retenueAbsenceConges: "Retenue absence conges payes",
+  indemniteConges: "Indemnite conges payes",
 } as const;
+
+// Base mensuelle moyenne de jours ouvres servant a valoriser une journee de
+// conge (salaire de base / JOURS_OUVRES_MOYENS). 21,67 = 260 jours ouvres / 12.
+// A VALIDER par expert-comptable : le decompte exact depend du calendrier reel
+// du mois (jours ouvres ou ouvrables effectifs). Ici on pose la mecanique du
+// maintien de salaire, pas le decompte parfait.
+const JOURS_OUVRES_MOYENS = 21.67;
 
 // Arrondi au centime. Le moteur arrondit chaque montant de ligne, puis somme
 // les montants deja arrondis, pour rester coherent avec un bulletin reel.
@@ -160,6 +169,30 @@ export function calculerBulletin(
   ];
   if (primeSoumise !== 0) {
     lignesBrut.push({ libelle: LIBELLES.primeSoumise, montant: primeSoumise });
+  }
+
+  // Conges payes, methode du MAINTIEN DE SALAIRE. Le salarie en conge percoit le
+  // meme brut que s'il avait travaille : on ne change pas le total, on le ventile.
+  // On retire une part du salaire de base au titre des jours d'absence, puis on la
+  // reajoute en indemnite de conges du MEME montant. Somme nulle : le brut soumis
+  // (et donc tranches, cotisations, CSG, RGDU, net, cout employeur) est IDENTIQUE
+  // a un mois sans conges au meme salaire. Seule la decomposition du brut differe.
+  //
+  // NON GERE dans le proto mono-bulletin (viendra avec les cumuls annuels) : la
+  // regle du dixieme et l'obligation de retenir la methode la plus favorable au
+  // salarie. Ici, uniquement le maintien de salaire.
+  const joursConges = entree.mensuel.joursConges ?? 0;
+  if (joursConges !== 0) {
+    const valeurJournee = salaireBase / JOURS_OUVRES_MOYENS;
+    const montantConges = arrondirCentime(valeurJournee * joursConges);
+    lignesBrut.push({
+      libelle: LIBELLES.retenueAbsenceConges,
+      montant: -montantConges,
+    });
+    lignesBrut.push({
+      libelle: LIBELLES.indemniteConges,
+      montant: montantConges,
+    });
   }
 
   // Tranches : T1 = part du brut sous le PMSS, T2 = part au-dessus.
