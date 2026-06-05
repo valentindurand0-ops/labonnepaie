@@ -222,3 +222,53 @@ body {
 .bulletin-totaux td:first-child {
   font-weight: 500;
 }
+
+/* Page de saisie : onglets entreprise / salarie */
+.saisie-onglets {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1.5rem 0 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.saisie-onglets button {
+  padding: 0.5rem 1rem;
+  border: 1px solid #d1d5db;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: #f3f4f6;
+  color: #374151;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.saisie-onglets button.actif {
+  background: #ffffff;
+  font-weight: 500;
+}
+
+.saisie-onglets button:disabled {
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.form-actions {
+  display: flex;
+  align-items: flex-end;
+}
+
+.form-actions button {
+  padding: 0.5rem 1rem;
+  border: 1px solid #2563eb;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.form-aide {
+  font-size: 0.75rem;
+  color: #6b7280;
+  max-width: 18rem;
+}

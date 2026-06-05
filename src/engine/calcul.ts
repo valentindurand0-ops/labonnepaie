@@ -37,6 +37,12 @@ export const LIBELLES = {
   indemniteConges: "Indemnite conges payes",
 } as const;
 
+// Duree mensuelle legale de travail pour une semaine de 35 heures, en heures :
+// 35 x 52 / 12 = 151,67. SOURCE UNIQUE de cette valeur : ecrite ici une seule
+// fois, reutilisee par le bareme (smicAnnuelRgdu) et par l'UI pour le bulletin
+// minimal. A VALIDER par expert-comptable.
+export const HEURES_MENSUELLES_LEGALES = 151.67;
+
 // Base mensuelle moyenne de jours ouvres servant a valoriser une journee de
 // conge (salaire de base / JOURS_OUVRES_MOYENS). 21,67 = 260 jours ouvres / 12.
 // A VALIDER par expert-comptable : le decompte exact depend du calendrier reel

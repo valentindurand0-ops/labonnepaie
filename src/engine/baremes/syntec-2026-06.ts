@@ -1,5 +1,5 @@
 import type { Bareme } from "../types";
-import { LIBELLES } from "../calcul";
+import { HEURES_MENSUELLES_LEGALES, LIBELLES } from "../calcul";
 
 // Bareme Syntec applicable a partir du 2026-06-01 (revalorisation du SMIC reel
 // au 1er juin 2026). Barreme en lignes declaratives : chaque ligne porte son
@@ -175,6 +175,6 @@ export const baremeSyntec202606: Bareme = {
     tdeltaAuSeuilEffectif: 0.3821, // effectif >= seuilEffectif, FNAL 0.50 % - A VALIDER
     p: 1.75, // A VALIDER par expert-comptable
     // SMIC RGDU gele a 12.02 EUR pour 2026 (distinct du SMIC reel a 12.31).
-    smicAnnuelRgdu: 151.67 * 12.02 * 12, // A VALIDER par expert-comptable
+    smicAnnuelRgdu: HEURES_MENSUELLES_LEGALES * 12.02 * 12, // A VALIDER par expert-comptable
   },
 };

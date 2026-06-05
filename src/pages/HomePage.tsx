@@ -23,6 +23,9 @@ export function HomePage() {
         <p>
           <Link to="/bulletin">Voir un bulletin de paie</Link>
         </p>
+        <p>
+          <Link to="/saisie">Saisir une entreprise et un salarie</Link>
+        </p>
       </section>
     </main>
   );

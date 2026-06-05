@@ -201,9 +201,37 @@ l'affichage. Il doit être testable seul, avec des tests unitaires par règle de
   12,02 -> 21876,88, surtout pas le SMIC réel 12,31). Les témoins existants, tous à
   effectif < 50, n'ont pas bougé d'un centime. UI : champ "Effectif" saisi
   explicitement (pas de défaut silencieux). Suite complète : 86 tests verts.
-  - PROCHAINE ÉTAPE : construire les ONGLETS de saisie ENTREPRISE et SALARIÉ sur ce
-    modèle (héritage entreprise -> salarié, ex contrat mutuelle), puis le socle des
-    cumuls annuels.
+- ÉTAPE FAITE : ONGLETS de saisie ENTREPRISE et SALARIÉ posés sur le modèle à 4
+  couches, état EN MÉMOIRE (aucune persistance, pas de Supabase à cette étape).
+  Nouvelle page src/pages/SaisiePage.tsx (route protégée /saisie, lien depuis la
+  home) qui DÉTIENT tout l'état (entreprise, salarié, onglet actif) et héberge deux
+  formulaires de couche : src/components/EntrepriseForm.tsx (couche 2) et
+  src/components/SalarieForm.tsx (couche 3).
+  - FRONTIÈRE respectée : les formulaires produisent des objets de couches
+    (Entreprise, Salarie) conformes à src/model/types.ts ; ils ne connaissent pas le
+    moteur. L'UI ne fabrique JAMAIS l'entrée plate à la main : SaisiePage passe
+    TOUJOURS par assemblerEntree avant calculerBulletin.
+  - DÉPENDANCE DE COUCHE dans l'UI : l'entreprise est l'objet racine ; l'onglet
+    salarié est VERROUILLÉ (bouton désactivé) tant qu'aucune entreprise n'existe. Le
+    salarié reference l'entreprise par id, transmis en prop (entrepriseId) et posé
+    par le formulaire, jamais saisi à la main. La convention est figée Syntec
+    (CONVENTION_SYNTEC, lecture seule). Champs réservés non affichés (communeInsee,
+    organismes, tauxPas). ids générés par crypto.randomUUID().
+  - PREUVE BOUT EN BOUT : entreprise saisie + salarié saisi + un BulletinMensuel
+    MINIMAL non éditable en mémoire (periode 2026-06, heures = durée légale) passent
+    dans assemblerEntree et redonnent un calcul juste, affiché en zone de contrôle.
+    L'assemblage tourne donc sur des données SAISIES À L'ÉCRAN, plus sur des fixtures.
+  - SOURCE UNIQUE pour la durée mensuelle légale : nouvelle constante exportée
+    HEURES_MENSUELLES_LEGALES = 151,67 (35 x 52 / 12) dans src/engine/calcul.ts,
+    A VALIDER expert-comptable. Le barème (smicAnnuelRgdu) et l'UI l'IMPORTENT ; plus
+    de 151,67 en dur. Déduplication à valeur identique : aucun témoin n'a bougé,
+    suite complète toujours 86 tests verts, build de prod OK.
+  - RESTE À FAIRE (a) CODE MORT à supprimer : le hard-code cadre 4000 de
+    src/pages/BulletinPage.tsx (état initial, champs en dur) devient du code mort
+    temporaire et assumé ; à retirer une fois la bascule UI faite.
+  - RESTE À FAIRE (b) BASCULER l'UI de src/pages/BulletinPage.tsx sur les onglets
+    une fois ceux-ci validés (le bulletin se construit alors depuis le salarié saisi
+    et un onglet bulletin mensuel), PUIS brancher Supabase (persistance des couches).
 - Affichage du bulletin : src/pages/BulletinPage.tsx (route protégée /bulletin,
   lien depuis la home). Formulaire réactif (statut, brut, taux AT/MP, heures,
   barème en lecture seule) branché sur le moteur. Toute la logique de calcul

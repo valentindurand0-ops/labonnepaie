@@ -4,6 +4,7 @@ import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { LoginPage } from "./pages/LoginPage";
 import { HomePage } from "./pages/HomePage";
 import { BulletinPage } from "./pages/BulletinPage";
+import { SaisiePage } from "./pages/SaisiePage";
 
 // Declaration des routes de l'application.
 // "/" est protegee, "/login" est publique.
@@ -26,6 +27,14 @@ export function App() {
             element={
               <ProtectedRoute>
                 <BulletinPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/saisie"
+            element={
+              <ProtectedRoute>
+                <SaisiePage />
               </ProtectedRoute>
             }
           />

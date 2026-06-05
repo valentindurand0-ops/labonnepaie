@@ -23,6 +23,7 @@ export {
   tauxPatronalSelonEffectif,
   tauxFnalPatronal,
   LIBELLES,
+  HEURES_MENSUELLES_LEGALES,
 } from "./calcul";
 export { baremeSyntec202606 } from "./baremes/syntec-2026-06";
 export { baremeSyntec202601 } from "./baremes/syntec-2026-01";
