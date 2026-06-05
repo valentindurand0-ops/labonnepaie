@@ -3,14 +3,25 @@ import { Link } from "react-router-dom";
 import {
   calculerBulletin,
   getBareme,
+  HEURES_MENSUELLES_LEGALES,
   type BulletinCalcule,
-  type EntreeBulletin,
   type LigneCotisation,
-  type Statut,
 } from "../engine";
+import { assemblerEntree, type BulletinMensuel } from "../model/types";
+import { useSaisie } from "../context/SaisieContext";
 
-// Reference du bareme, figee pour l'instant (affichee en lecture seule).
-const REFERENCE_BAREME = "syntec-2026-01";
+// Page d'AFFICHAGE du bulletin.
+//
+// SOURCE DES DONNEES : l'entreprise (couche 2) et le salarie (couche 3) viennent du
+// SaisieContext, donc de ce qui a ete REELLEMENT saisi dans /saisie. Plus aucune
+// donnee en dur (l'ancien cadre 4000 a disparu). La couche MENSUELLE (couche 4 :
+// periode, heures, prime, conges) est saisie ICI, en etat local : c'est la donnee
+// qui change chaque mois, elle n'a pas sa place dans le contexte partage.
+//
+// FRONTIERE : la page ne fabrique JAMAIS l'entree plate du moteur. Elle passe
+// TOUJOURS par assemblerEntree (seul endroit qui reunit les 4 couches) puis
+// calculerBulletin. Le bareme applique est celui resolu par l'assembleur
+// (entree.legal.bareme), pas un identifiant code en dur dans la page.
 
 // Formate un montant en euros : 2 decimales et espace separateur de milliers.
 // Ex : 5588.08 -> "5 588.08 €". N'effectue aucun calcul de paie.
@@ -64,42 +75,36 @@ function TableLignes({
 }
 
 export function BulletinPage() {
-  // Etat local du formulaire. Les champs numeriques sont stockes en chaine
-  // pour gerer proprement la saisie (vide, partielle) avant parsing.
-  const [statut, setStatut] = useState<Statut>("cadre");
-  const [brut, setBrut] = useState("4000");
-  const [tauxAtMp, setTauxAtMp] = useState("1.4");
-  const [effectif, setEffectif] = useState("10");
-  const [heures, setHeures] = useState("151.67");
+  // Couches 2 et 3 : lues dans le contexte partage (saisies dans /saisie).
+  const { entreprise, salarie } = useSaisie();
+
+  // Couche 4 (mensuel) : etat LOCAL a cette page. Les champs numeriques sont
+  // stockes en chaine pour gerer proprement la saisie (vide, partielle) avant
+  // parsing. La duree mensuelle par defaut vient du moteur, pas d'un nombre magique.
+  const [periode, setPeriode] = useState("2026-06");
+  const [heures, setHeures] = useState(String(HEURES_MENSUELLES_LEGALES));
   const [primeSoumise, setPrimeSoumise] = useState("0");
   const [joursConges, setJoursConges] = useState("0");
 
-  // Recalcul reactif : a chaque changement de champ, on appelle le moteur.
-  // Aucune logique de paie ici, seulement la validation de la saisie.
-  const { bulletin, erreur } = useMemo<{
+  // Recalcul reactif. Si l'entreprise ou le salarie manque, on ne calcule rien
+  // (l'ecran invite a completer la saisie). Sinon on valide la couche 4 puis on
+  // passe par assemblerEntree -> calculerBulletin. Aucune logique de paie ici :
+  // seulement la validation de la saisie mensuelle.
+  const { bulletin, erreur, baremeReference } = useMemo<{
     bulletin: BulletinCalcule | null;
     erreur: string | null;
+    baremeReference: string | null;
   }>(() => {
+    if (!entreprise || !salarie) {
+      return { bulletin: null, erreur: null, baremeReference: null };
+    }
     try {
-      const brutNum = Number(brut);
-      const tauxNum = Number(tauxAtMp);
-      const effectifNum = Number(effectif);
       const heuresNum = Number(heures);
       const primeNum = Number(primeSoumise);
       const joursCongesNum = Number(joursConges);
 
-      if (brut.trim() === "" || !Number.isFinite(brutNum) || brutNum <= 0) {
-        throw new Error("Le brut mensuel doit etre un nombre strictement positif.");
-      }
-      if (tauxAtMp.trim() === "" || !Number.isFinite(tauxNum) || tauxNum < 0) {
-        throw new Error("Le taux AT/MP doit etre un nombre positif ou nul.");
-      }
-      if (
-        effectif.trim() === "" ||
-        !Number.isInteger(effectifNum) ||
-        effectifNum < 0
-      ) {
-        throw new Error("L'effectif doit etre un entier positif ou nul.");
+      if (periode.trim() === "") {
+        throw new Error("La periode de paie est obligatoire.");
       }
       if (heures.trim() === "" || !Number.isFinite(heuresNum) || heuresNum <= 0) {
         throw new Error("Le nombre d'heures doit etre un nombre strictement positif.");
@@ -115,24 +120,50 @@ export function BulletinPage() {
         throw new Error("Les jours de conges doivent etre un nombre positif ou nul.");
       }
 
-      const entree: EntreeBulletin = {
-        legal: { bareme: REFERENCE_BAREME },
-        entreprise: { tauxAtMp: tauxNum, effectif: effectifNum },
-        salarie: { statut, brutMensuel: brutNum },
-        mensuel: {
-          heures: heuresNum,
-          primeSoumise: primeNum,
-          joursConges: joursCongesNum,
-        },
+      // Couche 4 assemblee a partir du salarie courant (reference par id). On ne
+      // fabrique pas l'entree plate : c'est assemblerEntree qui reunit les couches.
+      const bulletinMensuel: BulletinMensuel = {
+        salarieId: salarie.id,
+        periode,
+        heures: heuresNum,
+        primeSoumise: primeNum,
+        joursConges: joursCongesNum,
       };
 
-      const bareme = getBareme(REFERENCE_BAREME);
-      return { bulletin: calculerBulletin(entree, bareme), erreur: null };
+      const entree = assemblerEntree(entreprise, salarie, bulletinMensuel);
+      const bareme = getBareme(entree.legal.bareme);
+      return {
+        bulletin: calculerBulletin(entree, bareme),
+        erreur: null,
+        baremeReference: entree.legal.bareme,
+      };
     } catch (e) {
       const message = e instanceof Error ? e.message : "Erreur de calcul inconnue.";
-      return { bulletin: null, erreur: message };
+      return { bulletin: null, erreur: message, baremeReference: null };
     }
-  }, [statut, brut, tauxAtMp, effectif, heures, primeSoumise, joursConges]);
+  }, [entreprise, salarie, periode, heures, primeSoumise, joursConges]);
+
+  // Garde-fou : sans entreprise ET salarie saisis, pas de bulletin par defaut. On
+  // invite a completer la saisie, sans planter.
+  if (!entreprise || !salarie) {
+    return (
+      <main className="bulletin-page">
+        <header className="bulletin-header">
+          <h1>Bulletin de paie</h1>
+          <Link to="/">Retour a l'accueil</Link>
+        </header>
+        <section className="bulletin-section">
+          <p>
+            Aucun bulletin a afficher : completez d'abord la saisie de
+            l'entreprise et du salarie.
+          </p>
+          <p>
+            <Link to="/saisie">Saisir une entreprise et un salarie</Link>
+          </p>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="bulletin-page">
@@ -141,45 +172,52 @@ export function BulletinPage() {
         <Link to="/">Retour a l'accueil</Link>
       </header>
 
+      <section className="bulletin-section">
+        <h2>Entreprise et salarie</h2>
+        <table className="bulletin-table">
+          <tbody>
+            <tr>
+              <td>Entreprise</td>
+              <td>{entreprise.raisonSociale}</td>
+            </tr>
+            <tr>
+              <td>Effectif</td>
+              <td className="num">{entreprise.effectif}</td>
+            </tr>
+            <tr>
+              <td>Taux AT/MP</td>
+              <td className="num">{formaterTaux(entreprise.tauxAtMp)}</td>
+            </tr>
+            <tr>
+              <td>Salarie</td>
+              <td>
+                {salarie.prenom} {salarie.nom}
+              </td>
+            </tr>
+            <tr>
+              <td>Statut</td>
+              <td>{salarie.statut === "cadre" ? "Cadre" : "ETAM"}</td>
+            </tr>
+            <tr>
+              <td>Salaire de base mensuel</td>
+              <td className="num">
+                {formaterMontant(salarie.salaireBaseMensuel)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          <Link to="/saisie">Modifier l'entreprise ou le salarie</Link>
+        </p>
+      </section>
+
       <section className="bulletin-form">
         <label>
-          Statut
-          <select
-            value={statut}
-            onChange={(e) => setStatut(e.target.value as Statut)}
-          >
-            <option value="cadre">Cadre</option>
-            <option value="etam">ETAM</option>
-          </select>
-        </label>
-
-        <label>
-          Brut mensuel
+          Periode (AAAA-MM)
           <input
-            type="number"
-            value={brut}
-            onChange={(e) => setBrut(e.target.value)}
-          />
-        </label>
-
-        <label>
-          Taux AT/MP
-          <input
-            type="number"
-            step="0.01"
-            value={tauxAtMp}
-            onChange={(e) => setTauxAtMp(e.target.value)}
-          />
-        </label>
-
-        <label>
-          Effectif
-          <input
-            type="number"
-            step="1"
-            min="0"
-            value={effectif}
-            onChange={(e) => setEffectif(e.target.value)}
+            type="month"
+            value={periode}
+            onChange={(e) => setPeriode(e.target.value)}
           />
         </label>
 
@@ -211,11 +249,6 @@ export function BulletinPage() {
             value={joursConges}
             onChange={(e) => setJoursConges(e.target.value)}
           />
-        </label>
-
-        <label>
-          Bareme
-          <input type="text" value={REFERENCE_BAREME} readOnly />
         </label>
       </section>
 
@@ -294,6 +327,12 @@ export function BulletinPage() {
                     {formaterMontant(bulletin.coutTotalEmployeur)}
                   </td>
                 </tr>
+                {baremeReference ? (
+                  <tr>
+                    <td>Bareme applique</td>
+                    <td className="num">{baremeReference}</td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </section>

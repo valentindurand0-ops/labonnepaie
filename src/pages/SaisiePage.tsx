@@ -1,11 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  assemblerEntree,
-  type BulletinMensuel,
-  type Entreprise,
-  type Salarie,
-} from "../model/types";
+import { assemblerEntree, type BulletinMensuel } from "../model/types";
 import {
   calculerBulletin,
   getBareme,
@@ -14,12 +9,15 @@ import {
 } from "../engine";
 import { EntrepriseForm } from "../components/EntrepriseForm";
 import { SalarieForm } from "../components/SalarieForm";
+import { useSaisie } from "../context/SaisieContext";
 
 // Page de SAISIE : onglets entreprise (couche 2) et salarie (couche 3), poses sur
 // le modele a 4 couches (src/model/types.ts).
 //
-// ETAPE SANS PERSISTANCE : tout l'etat vit ici, en memoire (React state). Pas de
-// Supabase a ce stade. On valide la forme des ecrans et l'assemblage bout en bout.
+// ETAPE SANS PERSISTANCE : l'etat des couches (entreprise, salarie) vit dans le
+// SaisieContext (partage avec BulletinPage), en memoire. Pas de Supabase a ce stade.
+// Cette page ne DETIENT plus cet etat : elle le LIT et l'ECRIT via useSaisie. Seul
+// l'onglet actif reste un etat local (pur UI, propre a cette page).
 //
 // FRONTIERE : les onglets produisent des objets de couches (Entreprise, Salarie).
 // L'UI ne fabrique JAMAIS l'entree plate du moteur a la main et n'appelle jamais
@@ -27,9 +25,6 @@ import { SalarieForm } from "../components/SalarieForm";
 //
 // DEPENDANCE DE COUCHE : l'entreprise est l'objet racine ; le salarie la reference
 // par id. L'onglet salarie est donc verrouille tant qu'aucune entreprise n'existe.
-//
-// Cette page se construit A COTE de BulletinPage (hard-code cadre 4000), qui reste
-// en place. La bascule de l'UI sur ces onglets est une etape ulterieure.
 
 type Onglet = "entreprise" | "salarie";
 
@@ -47,9 +42,10 @@ function formaterMontant(valeur: number): string {
 }
 
 export function SaisiePage() {
-  // Etat des couches, en memoire. null tant que non saisi.
-  const [entreprise, setEntreprise] = useState<Entreprise | null>(null);
-  const [salarie, setSalarie] = useState<Salarie | null>(null);
+  // Etat des couches : detenu par le SaisieContext (partage avec BulletinPage),
+  // pas par cette page. On le lit et on l'ecrit via le contexte.
+  const { entreprise, salarie, setEntreprise, setSalarie } = useSaisie();
+  // Onglet actif : pur etat d'UI, local a cette page (rien a partager).
   const [ongletActif, setOngletActif] = useState<Onglet>("entreprise");
 
   // L'onglet salarie n'existe pas sans entreprise (dependance de couche).

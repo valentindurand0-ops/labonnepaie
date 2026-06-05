@@ -151,9 +151,11 @@ l'affichage. Il doit être testable seul, avec des tests unitaires par règle de
   - NON GÉRÉ (à venir avec les cumuls annuels) : la règle du dixième et
     l'obligation de retenir la méthode la plus favorable au salarié. Le proto
     mono-bulletin ne fait que le maintien de salaire.
-  - RESTE À FAIRE : faire pointer l'UI sur syntec-2026-06 (toujours sur
-    syntec-2026-01). La prime de vacances Syntec et la correction du biais RGDU
-    (prime/congé comptés x12) attendent le socle de cumuls.
+  - SOLDÉ (bascule BulletinPage sur le contexte de saisie) : l'UI ne code plus
+    syntec-2026-01 en dur. BulletinPage lit le barème depuis entree.legal.bareme,
+    résolu par l'assembleur (REFERENCE_BAREME_COURANT = syntec-2026-06). Le passage
+    de l'UI sur 2026-06 est donc fait. La prime de vacances Syntec et la correction
+    du biais RGDU (prime/congé comptés x12) attendent toujours le socle de cumuls.
 - ÉTAPE FAITE : modèle de données posé en TYPES uniquement (src/model/types.ts),
   sans aucune persistance, aucun Supabase, aucun composant React. Les quatre
   couches sont des interfaces séparées :
@@ -226,12 +228,9 @@ l'affichage. Il doit être testable seul, avec des tests unitaires par règle de
     A VALIDER expert-comptable. Le barème (smicAnnuelRgdu) et l'UI l'IMPORTENT ; plus
     de 151,67 en dur. Déduplication à valeur identique : aucun témoin n'a bougé,
     suite complète toujours 86 tests verts, build de prod OK.
-  - RESTE À FAIRE (a) CODE MORT à supprimer : le hard-code cadre 4000 de
-    src/pages/BulletinPage.tsx (état initial, champs en dur) devient du code mort
-    temporaire et assumé ; à retirer une fois la bascule UI faite.
-  - RESTE À FAIRE (b) BASCULER l'UI de src/pages/BulletinPage.tsx sur les onglets
-    une fois ceux-ci validés (le bulletin se construit alors depuis le salarié saisi
-    et un onglet bulletin mensuel), PUIS brancher Supabase (persistance des couches).
+  - SUITE : la bascule de BulletinPage sur ces onglets et la suppression du
+    hard-code cadre 4000 sont faites (voir l'étape dédiée plus bas). Reste à brancher
+    Supabase (persistance des couches).
 - ÉTAPE FAITE : PRE-REMPLISSAGE de l'onglet entreprise via l'API Recherche
   d'entreprises (recherche-entreprises.api.gouv.fr, gratuite, sans clé, sans auth).
   Le dirigeant tape un nom ou un SIRET, choisit dans une liste, et les champs
@@ -259,8 +258,38 @@ l'affichage. Il doit être testable seul, avec des tests unitaires par règle de
     repli. Bloc de recherche en sibling AU-DESSUS du form (la touche Entrée lance la
     recherche, ne soumet jamais le formulaire). Déclenchement par bouton + Entrée
     (pas de recherche à la frappe, pour ne pas marteler l'API).
-- Affichage du bulletin : src/pages/BulletinPage.tsx (route protégée /bulletin,
-  lien depuis la home). Formulaire réactif (statut, brut, taux AT/MP, heures,
-  barème en lecture seule) branché sur le moteur. Toute la logique de calcul
-  reste dans src/engine ; la page ne fait qu'appeler calculerBulletin / getBareme
-  et afficher le résultat (lignes salariales/patronales, totaux, gestion d'erreur).
+- ÉTAPE FAITE : BASCULE de BulletinPage sur le CONTEXTE DE SAISIE et SUPPRESSION du
+  hard-code cadre 4000. Il n'y a plus qu'UN SEUL chemin de saisie : BulletinPage
+  affiche le bulletin à partir de l'entreprise et du salarié RÉELLEMENT saisis dans
+  /saisie, plus à partir de données en dur.
+  - ÉTAT PARTAGÉ : nouveau src/context/SaisieContext.tsx (SaisieProvider + useSaisie)
+    placé au-dessus de toutes les routes dans src/App.tsx (version simple enveloppant
+    <Routes>, pas de route layout / Outlet à ce stade). Le contexte ne porte QUE des
+    objets de couches : entreprise (couche 2), salarié (couche 3) et leurs setters.
+    AUCUNE logique de calcul, AUCUN appel au moteur, AUCUN assemblerEntree dedans. Le
+    moteur (src/engine) et le modèle (src/model) n'importent jamais le contexte.
+    Garde-fou : useSaisie hors d'un SaisieProvider lève une erreur.
+  - SaisiePage ne DÉTIENT plus l'état entreprise/salarié : elle le lit et l'écrit via
+    useSaisie. Seul l'onglet actif reste un état local (pur UI). La zone de
+    vérification de l'assemblage reste en place et passe toujours par assemblerEntree.
+  - BulletinPage consomme useSaisie pour entreprise + salarié. La couche MENSUELLE
+    (couche 4 : période, heures, prime soumise, jours de congés) reste un état LOCAL
+    à la page (donnée saisie chaque mois, pas dans le contexte partagé). FRONTIÈRE
+    inchangée : la page passe TOUJOURS par assemblerEntree puis calculerBulletin,
+    jamais d'entrée plate fabriquée à la main. Le barème affiché vient de
+    entree.legal.bareme (résolu par l'assembleur), plus d'identifiant en dur.
+  - GARDE-FOU : si l'entreprise OU le salarié manque, BulletinPage n'affiche AUCUN
+    bulletin par défaut ; elle invite à compléter la saisie avec un lien vers /saisie,
+    sans planter. Un récapitulatif lecture seule de l'entreprise et du salarié saisis
+    est affiché au-dessus du formulaire mensuel.
+  - VALIDATIONS : les contrôles de brut, taux AT/MP et effectif ont été retirés de
+    BulletinPage car ils sont faits EN AMONT à la saisie (SalarieForm valide le
+    salaire de base > 0 ; EntrepriseForm valide l'effectif entier >= 0 et le taux
+    AT/MP >= 0). Aucune validation perdue. BulletinPage ne valide plus que sa couche 4
+    (période, heures > 0, prime >= 0, congés >= 0).
+  - Suite complète : 86 tests verts (témoins du moteur intacts, non touchés : ils
+    vivent dans src/engine et ne dépendent pas de l'UI), build de prod OK.
+  - RESTE À FAIRE : passer du SALARIÉ UNIQUE à une LISTE de salariés. Le contexte ne
+    détient aujourd'hui qu'un seul salarié ; il faudra une liste avec ajout et
+    sélection (pour la reconduction mensuelle et l'héritage des valeurs communes
+    entreprise -> salarié), PUIS brancher Supabase (persistance des couches).
