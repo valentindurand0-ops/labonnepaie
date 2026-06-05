@@ -152,10 +152,58 @@ l'affichage. Il doit être testable seul, avec des tests unitaires par règle de
     l'obligation de retenir la méthode la plus favorable au salarié. Le proto
     mono-bulletin ne fait que le maintien de salaire.
   - RESTE À FAIRE : faire pointer l'UI sur syntec-2026-06 (toujours sur
-    syntec-2026-01). Prochaine étape = CONCEPTION DU MODÈLE DE DONNÉES (entreprise,
-    salarié, héritage entreprise -> salarié, cumuls annuels) avant d'ouvrir les
-    onglets de saisie. La prime de vacances Syntec et la correction du biais RGDU
-    (prime/congé comptés x12) attendent ce socle de cumuls.
+    syntec-2026-01). La prime de vacances Syntec et la correction du biais RGDU
+    (prime/congé comptés x12) attendent le socle de cumuls.
+- ÉTAPE FAITE : modèle de données posé en TYPES uniquement (src/model/types.ts),
+  sans aucune persistance, aucun Supabase, aucun composant React. Les quatre
+  couches sont des interfaces séparées :
+  - Entreprise = objet racine : identité (SIRET, raison sociale, code APE,
+    adresse), effectif (nombre), taux AT/MP, commune INSEE et organismes réservés.
+    Le FNAL n'est PAS un champ stocké : fonction pure deduireFnal(effectif, barème).
+  - Salarie référence son entreprise par entrepriseId (pas de duplication). Porte
+    la CONVENTION COLLECTIVE (jamais l'entreprise : une société peut avoir plusieurs
+    conventions), désignée par identifiant (type ConventionCollective = "IDCC_1486",
+    extensible par union). Classification GÉNÉRIQUE (string libre) tant qu'une 2e
+    convention n'impose pas de structurer. Plus statut, type de contrat, salaire de
+    base, date d'entrée, taux PAS (réservé), mutuelle.
+  - BulletinMensuel = salarieId + période + couche variable (heures, primeSoumise,
+    joursConges).
+  - Cumuls (brutCumulé, netImposableCumulé, plafondSsConsommé, baseRgduAnnuelle) +
+    CUMULS_ZERO : EMPLACEMENT RÉSERVÉ, passé à zéro. Présent dans la signature de
+    l'assembleur pour brancher plus tard, sans réécriture, la correction du biais
+    RGDU x12, la régularisation des tranches et le net imposable annuel.
+  - assemblerEntree(entreprise, salarié, bulletin, cumuls=ZERO) : SEUL endroit qui
+    connaît les 4 couches, aplatit vers l'EntreeBulletin du moteur, vérifie la
+    cohérence des références (salarié -> entreprise, bulletin -> salarié). Le moteur
+    ne change pas de contrat d'entrée.
+  - Test d'ÉQUIVALENCE (src/model/__tests__/assembleur.test.ts) : entreprise +
+    salarié fictifs reproduisant le témoin cadre 4000 -> le moteur redonne net
+    3159,61 / cotis. pat. 1512,24 / coût 5512,24, sans montant recopié au hasard.
+- ÉTAPE FAITE : SOURCE UNIQUE pour la règle FNAL et le Tdelta RGDU. Le seuil
+  d'effectif (50) et les taux ne sont écrits QU'UNE FOIS, dans le barème versionné
+  (couche 1, src/engine/baremes/syntec-2026-06.ts) : Bareme.seuilEffectif = 50,
+  ligne FNAL tauxPatronal 0,10 % + tauxPatronalAuSeuilEffectif 0,50 %, rgdu.tdelta
+  0,3781 + tdeltaAuSeuilEffectif 0,3821. Personne ne recopie ces valeurs : la
+  fonction pure tauxPatronalSelonEffectif (src/engine/calcul.ts) est la SEULE logique
+  seuil -> taux, et le helper modèle deduireFnal LIT le barème via tauxFnalPatronal.
+  Le jour où un taux ou le seuil bouge : un seul endroit à éditer, daté et versionné.
+- ÉTAPE FAITE : effectif REBRANCHÉ côté moteur. EntreeEntreprise.effectif est un
+  champ REQUIS de l'entrée plate (pas optionnel, pas de fallback) : un appelant qui
+  l'oublie ÉCHOUE au typecheck (TS2741), il ne retombe pas silencieusement sur le
+  régime moins de 50. C'est l'assembleur qui le fournit depuis l'entreprise ; le
+  moteur ne lit l'effectif que dans son entrée plate et en DÉRIVE le FNAL (via
+  tauxPatronalSelonEffectif sur les lignes) et le Tdelta de la RGDU, valeurs et seuil
+  toujours lus dans le barème. Nouveau TÉMOIN à effectif >= 50
+  (src/engine/__tests__/calcul.effectif.test.ts) : cadre 4000 à 50 salariés ->
+  FNAL 0,50 % (20,00), coefficient RGDU 0,0397 recalculé avec Tdelta 0,3821
+  (réduction 158,80), cotis. pat. 1527,44, coût 5527,44 ; net 3159,61 INCHANGÉ
+  (effet purement patronal). Calcul validé pas à pas avant figement (SMIC RGDU gelé
+  12,02 -> 21876,88, surtout pas le SMIC réel 12,31). Les témoins existants, tous à
+  effectif < 50, n'ont pas bougé d'un centime. UI : champ "Effectif" saisi
+  explicitement (pas de défaut silencieux). Suite complète : 86 tests verts.
+  - PROCHAINE ÉTAPE : construire les ONGLETS de saisie ENTREPRISE et SALARIÉ sur ce
+    modèle (héritage entreprise -> salarié, ex contrat mutuelle), puis le socle des
+    cumuls annuels.
 - Affichage du bulletin : src/pages/BulletinPage.tsx (route protégée /bulletin,
   lien depuis la home). Formulaire réactif (statut, brut, taux AT/MP, heures,
   barème en lecture seule) branché sur le moteur. Toute la logique de calcul

@@ -140,6 +140,35 @@ export function calculerRgdu(
   return Math.round(c * 10000) / 10000;
 }
 
+// Selection PURE d'un taux patronal selon l'effectif, pour une ligne qui declare
+// un taux "au seuil" (tauxPatronalAuSeuilEffectif). Les VALEURS (le seuil et les
+// deux taux) sont portees par le bareme : cette fonction ne fait que CHOISIR, elle
+// n'ecrit aucune valeur. Source unique = le bareme. Utilisee par le moteur (lignes,
+// Partie 2) et par tauxFnalPatronal ci-dessous (donc par le modele via deduireFnal).
+export function tauxPatronalSelonEffectif(
+  ligne: LigneBareme,
+  effectif: number,
+  seuilEffectif: number,
+): number {
+  if (ligne.tauxPatronalAuSeuilEffectif != null && effectif >= seuilEffectif) {
+    return ligne.tauxPatronalAuSeuilEffectif;
+  }
+  return ligne.tauxPatronal;
+}
+
+// Taux FNAL patronal applicable selon l'effectif. Trouve la ligne FNAL du bareme
+// (le moteur est proprietaire de LIBELLES.fnal) et applique la selection ci-dessus.
+// SEULE porte d'entree vers le seuil 50 et les taux 0.10/0.50, tous deux ecrits
+// uniquement dans le bareme. Le modele (deduireFnal) delegue ici : aucune
+// reecriture de ces valeurs cote modele.
+export function tauxFnalPatronal(effectif: number, bareme: Bareme): number {
+  const fnal = bareme.lignes.find((l) => l.libelle === LIBELLES.fnal);
+  if (!fnal) {
+    return 0;
+  }
+  return tauxPatronalSelonEffectif(fnal, effectif, bareme.seuilEffectif);
+}
+
 // Fonction PURE : (entree, bareme) -> bulletin calcule.
 // Moteur generique : il itere sur les lignes declaratives du bareme et applique
 // l'assiette et les conditions. Aucune assiette codee en dur ligne par ligne.
@@ -224,9 +253,17 @@ export function calculerBulletin(
       base = Math.min(base, l.plafondPmss * pmss);
     }
 
+    // Taux patronal : AT/MP saisi par l'entreprise pour la ligne AT/MP, sinon le
+    // taux du bareme, selectionne selon l'effectif (ex FNAL 0.10 / 0.50 %). Le
+    // moteur derive donc du seul effectif recu dans l'entree ; valeurs et seuil
+    // restent portes par le bareme (source unique, voir tauxPatronalSelonEffectif).
     const tauxPatronal = l.tauxPatronalDepuisEntreprise
       ? entree.entreprise.tauxAtMp
-      : l.tauxPatronal;
+      : tauxPatronalSelonEffectif(
+          l,
+          entree.entreprise.effectif,
+          bareme.seuilEffectif,
+        );
 
     if (l.tauxSalarial !== 0) {
       lignesSalariales.push(ligne(l.libelle, base, l.tauxSalarial));
@@ -272,11 +309,18 @@ export function calculerBulletin(
   // mois de prime. Le vrai calcul annuel cumulatif (somme reelle des bruts de
   // l'annee) corrigera ce biais ; seul l'argument remuAnnuelle changera.
   const remuAnnuelle = brut * 12; // proto mono-bulletin, voir calculerRgdu.
-  const coefficientRgdu = calculerRgdu(
-    remuAnnuelle,
-    bareme.rgdu.smicAnnuelRgdu,
-    bareme.rgdu,
-  );
+  // Tdelta selon l'effectif recu dans l'entree (FNAL inclus dans l'allegement :
+  // 0.3781 sous le seuil, 0.3821 au seuil et au-dela). Seuil et valeurs portes par
+  // le bareme (source unique) ; le moteur ne fait que choisir depuis l'effectif.
+  const tdelta =
+    entree.entreprise.effectif >= bareme.seuilEffectif
+      ? bareme.rgdu.tdeltaAuSeuilEffectif
+      : bareme.rgdu.tdelta;
+  const coefficientRgdu = calculerRgdu(remuAnnuelle, bareme.rgdu.smicAnnuelRgdu, {
+    tmin: bareme.rgdu.tmin,
+    tdelta,
+    p: bareme.rgdu.p,
+  });
   const montantAllegement = arrondirCentime(coefficientRgdu * brut);
   if (montantAllegement !== 0) {
     lignesPatronales.push({

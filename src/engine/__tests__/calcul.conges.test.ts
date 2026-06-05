@@ -22,7 +22,7 @@ import type {
 function entree(joursConges: number): EntreeBulletin {
   return {
     legal: { bareme: "syntec-2026-06" },
-    entreprise: { tauxAtMp: 1.0 },
+    entreprise: { tauxAtMp: 1.0, effectif: 10 },
     salarie: {
       statut: "cadre",
       brutMensuel: 4000,

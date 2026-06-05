@@ -17,7 +17,13 @@ export type {
   BulletinCalcule,
 } from "./types";
 
-export { calculerBulletin, calculerRgdu, LIBELLES } from "./calcul";
+export {
+  calculerBulletin,
+  calculerRgdu,
+  tauxPatronalSelonEffectif,
+  tauxFnalPatronal,
+  LIBELLES,
+} from "./calcul";
 export { baremeSyntec202606 } from "./baremes/syntec-2026-06";
 export { baremeSyntec202601 } from "./baremes/syntec-2026-01";
 

@@ -16,7 +16,7 @@ import type { EntreeBulletin, LigneCotisation } from "../types";
 // Cadre 4500 sans prime : c'est le cas temoin de reference.
 const temoin4500: EntreeBulletin = {
   legal: { bareme: "syntec-2026-06" },
-  entreprise: { tauxAtMp: 1.0 },
+  entreprise: { tauxAtMp: 1.0, effectif: 10 },
   salarie: {
     statut: "cadre",
     brutMensuel: 4500,
@@ -29,7 +29,7 @@ const temoin4500: EntreeBulletin = {
 // Cadre 4000 + prime soumise 500 : doit donner exactement le meme brut soumis.
 const cadre4000Prime500: EntreeBulletin = {
   legal: { bareme: "syntec-2026-06" },
-  entreprise: { tauxAtMp: 1.0 },
+  entreprise: { tauxAtMp: 1.0, effectif: 10 },
   salarie: {
     statut: "cadre",
     brutMensuel: 4000,

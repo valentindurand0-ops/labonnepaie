@@ -28,7 +28,7 @@ const PMSS = baremeSyntec202606.pmss; // 4005
 function entree(statut: "cadre" | "etam", brutMensuel: number): EntreeBulletin {
   return {
     legal: { bareme: "syntec-2026-06" },
-    entreprise: { tauxAtMp: 1.0 },
+    entreprise: { tauxAtMp: 1.0, effectif: 10 }, // < 50 : temoins a effectif faible
     salarie: {
       statut,
       brutMensuel,

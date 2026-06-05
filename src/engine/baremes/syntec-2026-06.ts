@@ -16,6 +16,10 @@ export const baremeSyntec202606: Bareme = {
   // Plafond mensuel de la securite sociale. A VALIDER par expert-comptable.
   pmss: 4005,
 
+  // Seuil d'effectif "50 salaries" : ecrit UNE SEULE FOIS ici. Sert au taux FNAL
+  // (ligne ci-dessous) et au Tdelta de la RGDU. A VALIDER par expert-comptable.
+  seuilEffectif: 50,
+
   lignes: [
     // --- Vieillesse (securite sociale) ---
     {
@@ -116,12 +120,15 @@ export const baremeSyntec202606: Bareme = {
       tauxPatronalDepuisEntreprise: true,
     },
 
-    // --- FNAL (moins de 50 salaries par defaut) ---
+    // --- FNAL : taux selon l'effectif (seuil seuilEffectif ci-dessus) ---
+    // 0.10 % sous le seuil, 0.50 % au seuil et au-dela. Ces deux taux ne sont
+    // ecrits QUE LA, dans cette ligne du bareme versionne. A VALIDER expert-comptable.
     {
       libelle: LIBELLES.fnal,
       assiette: "brut",
       tauxSalarial: 0,
-      tauxPatronal: 0.1, // A VALIDER par expert-comptable
+      tauxPatronal: 0.1, // effectif < seuilEffectif - A VALIDER par expert-comptable
+      tauxPatronalAuSeuilEffectif: 0.5, // effectif >= seuilEffectif - A VALIDER
     },
 
     // --- Prevoyance Syntec (conventionnel, parametrable) ---
@@ -164,7 +171,8 @@ export const baremeSyntec202606: Bareme = {
   // Reduction generale degressive (RGDU). Tous parametres A VALIDER.
   rgdu: {
     tmin: 0.02, // A VALIDER par expert-comptable
-    tdelta: 0.3781, // entreprise moins de 50 salaries, FNAL 0.10 % - A VALIDER
+    tdelta: 0.3781, // effectif < seuilEffectif, FNAL 0.10 % - A VALIDER
+    tdeltaAuSeuilEffectif: 0.3821, // effectif >= seuilEffectif, FNAL 0.50 % - A VALIDER
     p: 1.75, // A VALIDER par expert-comptable
     // SMIC RGDU gele a 12.02 EUR pour 2026 (distinct du SMIC reel a 12.31).
     smicAnnuelRgdu: 151.67 * 12.02 * 12, // A VALIDER par expert-comptable

@@ -31,7 +31,7 @@ function entree(
 ): EntreeBulletin {
   return {
     legal: { bareme: "syntec-2026-06" },
-    entreprise: { tauxAtMp: 1.4 },
+    entreprise: { tauxAtMp: 1.4, effectif: 10 },
     salarie: { statut, brutMensuel, ...extra },
     mensuel: { heures: 151.67 },
   };

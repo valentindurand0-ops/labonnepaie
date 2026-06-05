@@ -69,6 +69,7 @@ export function BulletinPage() {
   const [statut, setStatut] = useState<Statut>("cadre");
   const [brut, setBrut] = useState("4000");
   const [tauxAtMp, setTauxAtMp] = useState("1.4");
+  const [effectif, setEffectif] = useState("10");
   const [heures, setHeures] = useState("151.67");
   const [primeSoumise, setPrimeSoumise] = useState("0");
   const [joursConges, setJoursConges] = useState("0");
@@ -82,6 +83,7 @@ export function BulletinPage() {
     try {
       const brutNum = Number(brut);
       const tauxNum = Number(tauxAtMp);
+      const effectifNum = Number(effectif);
       const heuresNum = Number(heures);
       const primeNum = Number(primeSoumise);
       const joursCongesNum = Number(joursConges);
@@ -91,6 +93,13 @@ export function BulletinPage() {
       }
       if (tauxAtMp.trim() === "" || !Number.isFinite(tauxNum) || tauxNum < 0) {
         throw new Error("Le taux AT/MP doit etre un nombre positif ou nul.");
+      }
+      if (
+        effectif.trim() === "" ||
+        !Number.isInteger(effectifNum) ||
+        effectifNum < 0
+      ) {
+        throw new Error("L'effectif doit etre un entier positif ou nul.");
       }
       if (heures.trim() === "" || !Number.isFinite(heuresNum) || heuresNum <= 0) {
         throw new Error("Le nombre d'heures doit etre un nombre strictement positif.");
@@ -108,7 +117,7 @@ export function BulletinPage() {
 
       const entree: EntreeBulletin = {
         legal: { bareme: REFERENCE_BAREME },
-        entreprise: { tauxAtMp: tauxNum },
+        entreprise: { tauxAtMp: tauxNum, effectif: effectifNum },
         salarie: { statut, brutMensuel: brutNum },
         mensuel: {
           heures: heuresNum,
@@ -123,7 +132,7 @@ export function BulletinPage() {
       const message = e instanceof Error ? e.message : "Erreur de calcul inconnue.";
       return { bulletin: null, erreur: message };
     }
-  }, [statut, brut, tauxAtMp, heures, primeSoumise, joursConges]);
+  }, [statut, brut, tauxAtMp, effectif, heures, primeSoumise, joursConges]);
 
   return (
     <main className="bulletin-page">
@@ -160,6 +169,17 @@ export function BulletinPage() {
             step="0.01"
             value={tauxAtMp}
             onChange={(e) => setTauxAtMp(e.target.value)}
+          />
+        </label>
+
+        <label>
+          Effectif
+          <input
+            type="number"
+            step="1"
+            min="0"
+            value={effectif}
+            onChange={(e) => setEffectif(e.target.value)}
           />
         </label>
 

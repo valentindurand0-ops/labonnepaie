@@ -17,6 +17,11 @@ export interface EntreeEntreprise {
   // Taux AT/MP en pourcentage, ex 1.4. Engage la conformite : jamais de valeur
   // par defaut silencieuse, c'est l'entreprise qui le fournit (CARSAT).
   tauxAtMp: number;
+  // Effectif (nombre de salaries), fourni par l'assembleur depuis l'entreprise.
+  // Le moteur en DERIVE le taux FNAL et le Tdelta de la RGDU (seuil et valeurs
+  // portes par le bareme, source unique). Le moteur ne lit jamais l'effectif
+  // ailleurs que dans cette entree plate.
+  effectif: number;
 }
 
 // Couche 3 : donnees salarie / contrat.
@@ -90,6 +95,12 @@ export interface LigneBareme {
   // Si vrai, le taux patronal effectif est le taux AT/MP saisi par l'entreprise
   // (EntreeEntreprise.tauxAtMp), et non le tauxPatronal du bareme.
   tauxPatronalDepuisEntreprise?: boolean;
+  // Taux patronal applique lorsque l'effectif de l'entreprise atteint le seuil
+  // (Bareme.seuilEffectif). Si defini, tauxPatronal est le taux SOUS le seuil et
+  // celui-ci le taux AU SEUIL et au-dela (ex FNAL : 0.10 % sous 50, 0.50 % a partir
+  // de 50). C'est la SEULE ecriture de ces deux taux : ni le moteur ni le modele ne
+  // les redefinissent, ils lisent cette ligne. A VALIDER par expert-comptable.
+  tauxPatronalAuSeuilEffectif?: number;
   // Si vrai, la part patronale de cette ligne est reintegree a 100 % dans
   // l'assiette CSG/CRDS (ex prevoyance).
   reintegrerCsg?: boolean;
@@ -103,9 +114,13 @@ export interface LigneBareme {
 export interface ParamsRgdu {
   // Coefficient minimum, ex 0.0200.
   tmin: number;
-  // Coefficient delta (entreprise de moins de 50 salaries, FNAL 0.10 %),
-  // ex 0.3781.
+  // Coefficient delta SOUS le seuil d'effectif (entreprise de moins de
+  // Bareme.seuilEffectif salaries, FNAL 0.10 %), ex 0.3781.
   tdelta: number;
+  // Coefficient delta AU SEUIL d'effectif et au-dela (FNAL 0.50 %), ex 0.3821. Le
+  // moteur choisit entre tdelta et celui-ci selon l'effectif recu dans l'entree ;
+  // le seuil est Bareme.seuilEffectif (source unique). A VALIDER expert-comptable.
+  tdeltaAuSeuilEffectif: number;
   // Exposant de la formule, ex 1.75.
   p: number;
   // SMIC annuel de reference pour la RGDU. Gele a 12.02 EUR pour 2026, distinct
@@ -119,6 +134,11 @@ export interface Bareme {
   dateApplication: string;
   // Plafond mensuel de la securite sociale en euros (ex 4005).
   pmss: number;
+  // Seuil d'effectif (nombre de salaries) qui fait basculer certaines regles
+  // legales : taux FNAL (voir LigneBareme.tauxPatronalAuSeuilEffectif) et Tdelta de
+  // la reduction generale (Partie 2). ECRIT UNE SEULE FOIS ici : c'est la valeur de
+  // reference du seuil "50 salaries". A VALIDER par expert-comptable.
+  seuilEffectif: number;
   // Lignes declaratives de cotisation (voir LigneBareme).
   lignes: LigneBareme[];
   // Parametres de la reduction generale degressive.
