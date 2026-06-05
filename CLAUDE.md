@@ -232,6 +232,33 @@ l'affichage. Il doit être testable seul, avec des tests unitaires par règle de
   - RESTE À FAIRE (b) BASCULER l'UI de src/pages/BulletinPage.tsx sur les onglets
     une fois ceux-ci validés (le bulletin se construit alors depuis le salarié saisi
     et un onglet bulletin mensuel), PUIS brancher Supabase (persistance des couches).
+- ÉTAPE FAITE : PRE-REMPLISSAGE de l'onglet entreprise via l'API Recherche
+  d'entreprises (recherche-entreprises.api.gouv.fr, gratuite, sans clé, sans auth).
+  Le dirigeant tape un nom ou un SIRET, choisit dans une liste, et les champs
+  fiables se remplissent seuls (et restent éditables).
+  - FRONTIÈRE respectée : l'appel réseau vit dans un module UI dédié,
+    src/services/rechercheEntreprises.ts, SEUL endroit du projet qui fait un fetch.
+    Le moteur (src/engine) et le modèle (src/model) ne font aucun appel réseau et
+    n'importent JAMAIS ce module ; seul EntrepriseForm l'importe. L'objet Entreprise
+    émis par le formulaire garde EXACTEMENT la même forme qu'avant : l'API ne fait
+    que remplir des champs locaux avant émission. types.ts, engine et assembleur non
+    touchés.
+  - Mapping API -> champs : raison sociale (nom_complet ?? nom_raison_sociale),
+    SIRET du siège, code APE, adresse du siège (numero_voie + type_voie +
+    libelle_voie, code postal, libellé commune). Le code APE est NORMALISÉ une fois
+    dans le service au format canonique "DD.DDL" (l'API le renvoie avec ou sans
+    point selon la source) ; cohérence de donnée, pas de calcul.
+  - EFFECTIF ET AT/MP TOUJOURS SAISIS À LA MAIN, jamais pré-remplis : ils engagent
+    la conformité (effectif décide FNAL et Tdelta au seuil de 50). La tranche INSEE
+    (tranche_effectif_salarie) est souvent périmée et n'est qu'un nombre de tranche :
+    affichée comme simple INDICE à côté du champ effectif ("INSEE indique : 10 à 19
+    salariés..."), jamais dérivée en effectif. AT/MP garde sa mention CARSAT /
+    A VALIDER.
+  - États gérés (chargement, aucun résultat, erreur réseau) sans plantage : en cas
+    d'API indisponible, message d'invite et SAISIE 100% MANUELLE toujours possible en
+    repli. Bloc de recherche en sibling AU-DESSUS du form (la touche Entrée lance la
+    recherche, ne soumet jamais le formulaire). Déclenchement par bouton + Entrée
+    (pas de recherche à la frappe, pour ne pas marteler l'API).
 - Affichage du bulletin : src/pages/BulletinPage.tsx (route protégée /bulletin,
   lien depuis la home). Formulaire réactif (statut, brut, taux AT/MP, heures,
   barème en lecture seule) branché sur le moteur. Toute la logique de calcul

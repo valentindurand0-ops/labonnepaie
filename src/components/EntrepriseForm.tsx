@@ -1,5 +1,9 @@
 import { useState } from "react";
 import type { Entreprise } from "../model/types";
+import {
+  rechercherEntreprises,
+  type ResultatRechercheEntreprise,
+} from "../services/rechercheEntreprises";
 
 // Onglet 1 : saisie de la COUCHE 2 (entreprise, objet racine du modele).
 //
@@ -7,6 +11,14 @@ import type { Entreprise } from "../model/types";
 // produit un objet Entreprise conforme a src/model/types.ts et le remonte via
 // onSave. C'est le parent (SaisiePage) qui detient l'etat ; ce composant ne fait
 // que saisir, valider, et emettre l'objet de couche.
+//
+// PRE-REMPLISSAGE via l'API Recherche d'entreprises : le bloc recherche (sibling
+// au-dessus du formulaire) appelle src/services/rechercheEntreprises. Au clic sur
+// un resultat, on remplit les champs LOCAUX fiables (raison sociale, SIRET, APE,
+// adresse) ; l'objet Entreprise emis garde EXACTEMENT la meme forme qu'avant. Tout
+// reste editable, et la saisie 100% manuelle reste possible si l'API est indispo.
+// L'effectif et le taux AT/MP ne sont JAMAIS pre-remplis (ils engagent la
+// conformite : saisis et confirmes a la main).
 //
 // Champs RESERVES du modele (communeInsee, organismes) non affiches a cette etape :
 // ce sont des emplacements reserves (versement mobilite, DSN), pas encore exploites.
@@ -38,6 +50,61 @@ export function EntrepriseForm({
     entreprise ? String(entreprise.tauxAtMp) : "",
   );
   const [erreur, setErreur] = useState<string | null>(null);
+
+  // Etat du bloc de recherche (pre-remplissage via l'API). Independant de la
+  // saisie : son seul effet est de remplir les champs locaux ci-dessus.
+  const [recherche, setRecherche] = useState("");
+  const [resultats, setResultats] = useState<ResultatRechercheEntreprise[]>([]);
+  const [chargement, setChargement] = useState(false);
+  const [erreurRecherche, setErreurRecherche] = useState<string | null>(null);
+  const [rechercheLancee, setRechercheLancee] = useState(false);
+  // Indice INSEE d'effectif du dernier resultat choisi : AFFICHAGE SEULEMENT, a
+  // cote du champ effectif. Ne pre-remplit jamais l'effectif.
+  const [indiceEffectif, setIndiceEffectif] = useState<{
+    label: string;
+    annee: string | null;
+  } | null>(null);
+
+  const rechercheTropCourte = recherche.trim().length < 3;
+
+  async function lancerRecherche() {
+    if (rechercheTropCourte) return;
+    setChargement(true);
+    setErreurRecherche(null);
+    try {
+      const trouves = await rechercherEntreprises(recherche);
+      setResultats(trouves);
+    } catch {
+      // On n'expose pas le detail technique : message simple, saisie manuelle
+      // toujours possible en repli.
+      setErreurRecherche(
+        "Recherche indisponible. Vous pouvez saisir l'entreprise manuellement.",
+      );
+      setResultats([]);
+    } finally {
+      setChargement(false);
+      setRechercheLancee(true);
+    }
+  }
+
+  // Remplit les champs LOCAUX fiables depuis un resultat. Ne touche jamais a
+  // effectif ni tauxAtMp. Les champs restent editables ensuite.
+  function choisirResultat(r: ResultatRechercheEntreprise) {
+    setRaisonSociale(r.raisonSociale);
+    setSiret(r.siret);
+    setCodeApe(r.codeApe);
+    setLigne1(r.adresseLigne1);
+    setCodePostal(r.codePostal);
+    setCommune(r.commune);
+    setIndiceEffectif(
+      r.trancheEffectifLabel
+        ? { label: r.trancheEffectifLabel, annee: r.trancheEffectifAnnee }
+        : null,
+    );
+    // On replie la liste de resultats apres selection.
+    setResultats([]);
+    setRechercheLancee(false);
+  }
 
   function soumettre(e: React.FormEvent) {
     e.preventDefault();
@@ -86,96 +153,163 @@ export function EntrepriseForm({
   }
 
   return (
-    <form className="bulletin-form" onSubmit={soumettre}>
-      <label>
-        Raison sociale
-        <input
-          type="text"
-          value={raisonSociale}
-          onChange={(e) => setRaisonSociale(e.target.value)}
-        />
-      </label>
+    <>
+      <section className="recherche-entreprise">
+        <label>
+          Rechercher mon entreprise (nom ou SIRET)
+          <input
+            type="text"
+            value={recherche}
+            placeholder="Ex : nom de la societe ou numero SIRET"
+            onChange={(e) => setRecherche(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void lancerRecherche();
+              }
+            }}
+          />
+        </label>
+        <div className="form-actions">
+          <button
+            type="button"
+            onClick={() => void lancerRecherche()}
+            disabled={chargement || rechercheTropCourte}
+          >
+            Rechercher
+          </button>
+        </div>
 
-      <label>
-        SIRET
-        <input
-          type="text"
-          value={siret}
-          onChange={(e) => setSiret(e.target.value)}
-        />
-      </label>
+        {chargement ? <p className="recherche-statut">Recherche en cours...</p> : null}
 
-      <label>
-        Code APE / NAF
-        <input
-          type="text"
-          value={codeApe}
-          onChange={(e) => setCodeApe(e.target.value)}
-        />
-      </label>
+        {erreurRecherche ? (
+          <p className="recherche-statut recherche-erreur" role="alert">
+            {erreurRecherche}
+          </p>
+        ) : null}
 
-      <label>
-        Adresse
-        <input
-          type="text"
-          value={ligne1}
-          onChange={(e) => setLigne1(e.target.value)}
-        />
-      </label>
+        {!chargement &&
+        !erreurRecherche &&
+        rechercheLancee &&
+        resultats.length === 0 ? (
+          <p className="recherche-statut">Aucune entreprise trouvee.</p>
+        ) : null}
 
-      <label>
-        Code postal
-        <input
-          type="text"
-          value={codePostal}
-          onChange={(e) => setCodePostal(e.target.value)}
-        />
-      </label>
+        {resultats.length > 0 ? (
+          <ul className="recherche-resultats">
+            {resultats.map((r) => (
+              <li key={`${r.siret}-${r.raisonSociale}`}>
+                <button type="button" onClick={() => choisirResultat(r)}>
+                  <span className="resultat-nom">{r.raisonSociale}</span>
+                  <span className="resultat-detail">
+                    SIRET {r.siret || "inconnu"}
+                    {r.commune ? ` - ${r.commune}` : ""}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </section>
 
-      <label>
-        Commune
-        <input
-          type="text"
-          value={commune}
-          onChange={(e) => setCommune(e.target.value)}
-        />
-      </label>
+      <form className="bulletin-form" onSubmit={soumettre}>
+        <label>
+          Raison sociale
+          <input
+            type="text"
+            value={raisonSociale}
+            onChange={(e) => setRaisonSociale(e.target.value)}
+          />
+        </label>
 
-      <label>
-        Effectif
-        <input
-          type="number"
-          step="1"
-          min="0"
-          value={effectif}
-          onChange={(e) => setEffectif(e.target.value)}
-        />
-      </label>
+        <label>
+          SIRET
+          <input
+            type="text"
+            value={siret}
+            onChange={(e) => setSiret(e.target.value)}
+          />
+        </label>
 
-      <label>
-        Taux AT/MP (%)
-        <input
-          type="number"
-          step="0.01"
-          min="0"
-          value={tauxAtMp}
-          onChange={(e) => setTauxAtMp(e.target.value)}
-        />
-        <small className="form-aide">
-          Notifie chaque annee par la CARSAT, propre a votre entreprise. A VALIDER
-          par expert-comptable.
-        </small>
-      </label>
+        <label>
+          Code APE / NAF
+          <input
+            type="text"
+            value={codeApe}
+            onChange={(e) => setCodeApe(e.target.value)}
+          />
+        </label>
 
-      {erreur ? (
-        <p className="bulletin-erreur" role="alert">
-          {erreur}
-        </p>
-      ) : null}
+        <label>
+          Adresse
+          <input
+            type="text"
+            value={ligne1}
+            onChange={(e) => setLigne1(e.target.value)}
+          />
+        </label>
 
-      <div className="form-actions">
-        <button type="submit">Enregistrer l'entreprise</button>
-      </div>
-    </form>
+        <label>
+          Code postal
+          <input
+            type="text"
+            value={codePostal}
+            onChange={(e) => setCodePostal(e.target.value)}
+          />
+        </label>
+
+        <label>
+          Commune
+          <input
+            type="text"
+            value={commune}
+            onChange={(e) => setCommune(e.target.value)}
+          />
+        </label>
+
+        <label>
+          Effectif
+          <input
+            type="number"
+            step="1"
+            min="0"
+            value={effectif}
+            onChange={(e) => setEffectif(e.target.value)}
+          />
+          {indiceEffectif ? (
+            <small className="form-aide">
+              INSEE indique : {indiceEffectif.label}
+              {indiceEffectif.annee ? ` (en date de ${indiceEffectif.annee})` : ""}.
+              Saisissez votre nombre exact de salaries.
+            </small>
+          ) : null}
+        </label>
+
+        <label>
+          Taux AT/MP (%)
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={tauxAtMp}
+            onChange={(e) => setTauxAtMp(e.target.value)}
+          />
+          <small className="form-aide">
+            Notifie chaque annee par la CARSAT, propre a votre entreprise. A VALIDER
+            par expert-comptable.
+          </small>
+        </label>
+
+        {erreur ? (
+          <p className="bulletin-erreur" role="alert">
+            {erreur}
+          </p>
+        ) : null}
+
+        <div className="form-actions">
+          <button type="submit">Enregistrer l'entreprise</button>
+        </div>
+      </form>
+    </>
   );
 }

@@ -272,3 +272,78 @@ body {
   color: #6b7280;
   max-width: 18rem;
 }
+
+/* Bloc de recherche d'entreprise (pre-remplissage via API) */
+.recherche-entreprise {
+  margin: 1.5rem 0 0;
+  padding: 1rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.recherche-entreprise > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  color: #374151;
+}
+
+.recherche-entreprise input {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.recherche-entreprise .form-actions {
+  margin-top: 0.5rem;
+}
+
+.recherche-statut {
+  margin: 0.5rem 0 0;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.recherche-statut.recherche-erreur {
+  color: #b91c1c;
+}
+
+.recherche-resultats {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.recherche-resultats button {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.recherche-resultats button:hover {
+  background: #eff6ff;
+  border-color: #2563eb;
+}
+
+.resultat-nom {
+  font-weight: 500;
+  color: #111827;
+}
+
+.resultat-detail {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
