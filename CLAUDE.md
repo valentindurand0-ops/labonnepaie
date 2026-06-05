@@ -136,9 +136,26 @@ l'affichage. Il doit être testable seul, avec des tests unitaires par règle de
     cumuls) : la RGDU estime la rémunération annuelle par brut mensuel x 12, donc
     une prime ponctuelle est comptée 12 fois et baisse à tort le coefficient RGDU
     du mois de prime. Sera corrigé par le vrai calcul annuel cumulatif.
-  - RESTE À FAIRE : faire pointer l'UI sur syntec-2026-06 ; prochaine étape moteur =
-    prime de vacances Syntec (10 % de l'indemnité de congés payés, versée vers
-    juin), qui se posera par-dessus ce socle de prime soumise générique.
+- ÉTAPE FAITE : congés payés en méthode MAINTIEN DE SALAIRE (dernier gros morceau
+  moteur). EntreeMensuel.joursConges (défaut 0). Le brut soumis ne bouge pas : on
+  le ventile en deux lignes de brut qui s'annulent, une retenue d'absence (négative)
+  et une indemnité de congés (positive) du même montant. Valeur d'une journée =
+  salaire de base / 21,67 jours ouvrés moyens (constante JOURS_OUVRES_MOYENS,
+  A VALIDER expert-comptable). La cascade (tranches, cotisations, CSG, RGDU, net,
+  coût employeur) est neutre PAR CONSTRUCTION. UI : champ "Jours de congés" ; les
+  deux lignes apparaissent dans "Eléments de brut". Verrouillé par un test
+  d'ÉQUIVALENCE (pas de montants recopiés) : cadre 4000 + 5 jours == témoin cadre
+  4000 sec sur tous les agrégats, et la ventilation somme à 0,00 exactement
+  (src/engine/__tests__/calcul.conges.test.ts, 8 tests). Suite complète : 67 tests
+  verts.
+  - NON GÉRÉ (à venir avec les cumuls annuels) : la règle du dixième et
+    l'obligation de retenir la méthode la plus favorable au salarié. Le proto
+    mono-bulletin ne fait que le maintien de salaire.
+  - RESTE À FAIRE : faire pointer l'UI sur syntec-2026-06 (toujours sur
+    syntec-2026-01). Prochaine étape = CONCEPTION DU MODÈLE DE DONNÉES (entreprise,
+    salarié, héritage entreprise -> salarié, cumuls annuels) avant d'ouvrir les
+    onglets de saisie. La prime de vacances Syntec et la correction du biais RGDU
+    (prime/congé comptés x12) attendent ce socle de cumuls.
 - Affichage du bulletin : src/pages/BulletinPage.tsx (route protégée /bulletin,
   lien depuis la home). Formulaire réactif (statut, brut, taux AT/MP, heures,
   barème en lecture seule) branché sur le moteur. Toute la logique de calcul
