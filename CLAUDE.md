@@ -289,7 +289,42 @@ l'affichage. Il doit être testable seul, avec des tests unitaires par règle de
     (période, heures > 0, prime >= 0, congés >= 0).
   - Suite complète : 86 tests verts (témoins du moteur intacts, non touchés : ils
     vivent dans src/engine et ne dépendent pas de l'UI), build de prod OK.
-  - RESTE À FAIRE : passer du SALARIÉ UNIQUE à une LISTE de salariés. Le contexte ne
-    détient aujourd'hui qu'un seul salarié ; il faudra une liste avec ajout et
-    sélection (pour la reconduction mensuelle et l'héritage des valeurs communes
-    entreprise -> salarié), PUIS brancher Supabase (persistance des couches).
+- ÉTAPE FAITE : passage du SALARIÉ UNIQUE à une LISTE de salariés dans le contexte
+  de saisie. Toujours sans persistance, état en mémoire (Supabase reste une étape
+  séparée). Une entreprise a plusieurs salariés ; la reconduction mensuelle et
+  l'héritage entreprise -> salarié à venir supposent une liste.
+  - CONTEXTE (src/context/SaisieContext.tsx) : salarie: Salarie | null est remplacé
+    par salaries: Salarie[] (vide au départ) et salarieSelectionneId: string | null.
+    On stocke l'ID du salarié actif, JAMAIS une copie : pas de risque d'avoir deux
+    versions du même salarié qui divergent. Le salarié courant est exposé comme
+    DÉRIVÉ salarieSelectionne: Salarie | null, recalculé par salaries.find à chaque
+    rendu (pas de useState dédié) ; salaries et salarieSelectionneId restent les
+    seules sources de vérité. Fonctions exposées : ajouterSalarie(s) (ajoute ET
+    sélectionne le nouveau), selectionnerSalarie(id), modifierSalarie(s) (remplace
+    dans la liste celui de même id, sans toucher la sélection). entreprise inchangé.
+    FRONTIÈRE intacte : le contexte ne porte que des objets de couches et de l'état
+    d'UI, aucun calcul, aucun appel moteur, aucun assemblerEntree.
+  - SaisiePage : l'onglet salarié LISTE les salariés créés (chacun sélectionnable,
+    l'actif est marqué), permet d'en AJOUTER un (SalarieForm inchangé, émet un objet
+    Salarie via onSave ; c'est SaisiePage qui appelle ajouterSalarie ; entrepriseId
+    toujours posé depuis la prop, jamais saisi). Le verrou de couche est conservé :
+    onglet salarié désactivé tant qu'aucune entreprise. Après ajout, un compteur de
+    remontage (key) remet le formulaire à vide. La zone de vérification d'assemblage
+    porte désormais sur le salarié sélectionné.
+  - BulletinPage : lit le salarié SÉLECTIONNÉ (salarieSelectionne) au lieu du salarié
+    unique. Sélecteur de salarié affiché dès qu'il y a au moins deux salariés (change
+    selectionnerSalarie, tout le bulletin se recalcule). Garde-fou inchangé : sans
+    entreprise OU sans salarié sélectionné, message "complétez la saisie" + lien vers
+    /saisie. Chemin assemblerEntree -> calculerBulletin identique.
+  - Suite complète : 86 tests verts (moteur intact, non touché), typecheck propre,
+    build de prod OK.
+  - RESTE À FAIRE :
+    - modifierSalarie est exposé dans le contexte mais PAS encore branché à une UI :
+      prise laissée volontairement, à câbler lors de l'étape "édition d'un salarié
+      existant" (cliquer un salarié charge le formulaire, réenregistrer appelle
+      modifierSalarie). Tracé ici pour que cette fonction non utilisée ne devienne
+      pas du code mort silencieux.
+    - reconduction mensuelle (reconduire le mois précédent, ne saisir que les
+      exceptions) et héritage des valeurs communes entreprise -> salarié.
+    - wizard de classification Syntec (2-3 questions déduisant position/coefficient).
+    - brancher Supabase (persistance des couches).

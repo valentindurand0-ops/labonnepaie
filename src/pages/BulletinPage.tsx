@@ -12,11 +12,13 @@ import { useSaisie } from "../context/SaisieContext";
 
 // Page d'AFFICHAGE du bulletin.
 //
-// SOURCE DES DONNEES : l'entreprise (couche 2) et le salarie (couche 3) viennent du
-// SaisieContext, donc de ce qui a ete REELLEMENT saisi dans /saisie. Plus aucune
-// donnee en dur (l'ancien cadre 4000 a disparu). La couche MENSUELLE (couche 4 :
-// periode, heures, prime, conges) est saisie ICI, en etat local : c'est la donnee
-// qui change chaque mois, elle n'a pas sa place dans le contexte partage.
+// SOURCE DES DONNEES : l'entreprise (couche 2) et le salarie SELECTIONNE (couche 3)
+// viennent du SaisieContext, donc de ce qui a ete REELLEMENT saisi dans /saisie. Le
+// contexte detient une LISTE de salaries ; cette page affiche le salarie actif
+// (salarieSelectionne), et propose de changer lequel est affiche. Plus aucune donnee
+// en dur (l'ancien cadre 4000 a disparu). La couche MENSUELLE (couche 4 : periode,
+// heures, prime, conges) est saisie ICI, en etat local : c'est la donnee qui change
+// chaque mois, elle n'a pas sa place dans le contexte partage.
 //
 // FRONTIERE : la page ne fabrique JAMAIS l'entree plate du moteur. Elle passe
 // TOUJOURS par assemblerEntree (seul endroit qui reunit les 4 couches) puis
@@ -75,8 +77,12 @@ function TableLignes({
 }
 
 export function BulletinPage() {
-  // Couches 2 et 3 : lues dans le contexte partage (saisies dans /saisie).
-  const { entreprise, salarie } = useSaisie();
+  // Couches 2 et 3 : lues dans le contexte partage (saisies dans /saisie). Le
+  // salarie affiche est le salarie SELECTIONNE (derive du contexte). On lit aussi la
+  // liste et de quoi changer la selection, pour offrir un selecteur de salarie.
+  const { entreprise, salaries, salarieSelectionne, salarieSelectionneId, selectionnerSalarie } =
+    useSaisie();
+  const salarie = salarieSelectionne;
 
   // Couche 4 (mensuel) : etat LOCAL a cette page. Les champs numeriques sont
   // stockes en chaine pour gerer proprement la saisie (vide, partielle) avant
@@ -155,7 +161,7 @@ export function BulletinPage() {
         <section className="bulletin-section">
           <p>
             Aucun bulletin a afficher : completez d'abord la saisie de
-            l'entreprise et du salarie.
+            l'entreprise et selectionnez un salarie.
           </p>
           <p>
             <Link to="/saisie">Saisir une entreprise et un salarie</Link>
@@ -174,6 +180,24 @@ export function BulletinPage() {
 
       <section className="bulletin-section">
         <h2>Entreprise et salarie</h2>
+        {/* Selecteur du salarie affiche : visible des qu'il y a au moins deux
+            salaries (avec un seul, rien a choisir). Change le salarie actif du
+            contexte ; tout le bulletin se recalcule pour le salarie choisi. */}
+        {salaries.length > 1 ? (
+          <label className="bulletin-selecteur-salarie">
+            Salarie affiche
+            <select
+              value={salarieSelectionneId ?? ""}
+              onChange={(e) => selectionnerSalarie(e.target.value)}
+            >
+              {salaries.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.prenom} {s.nom}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <table className="bulletin-table">
           <tbody>
             <tr>

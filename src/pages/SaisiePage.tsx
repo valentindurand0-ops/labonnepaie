@@ -11,13 +11,19 @@ import { EntrepriseForm } from "../components/EntrepriseForm";
 import { SalarieForm } from "../components/SalarieForm";
 import { useSaisie } from "../context/SaisieContext";
 
-// Page de SAISIE : onglets entreprise (couche 2) et salarie (couche 3), poses sur
+// Page de SAISIE : onglets entreprise (couche 2) et salaries (couche 3), poses sur
 // le modele a 4 couches (src/model/types.ts).
 //
-// ETAPE SANS PERSISTANCE : l'etat des couches (entreprise, salarie) vit dans le
-// SaisieContext (partage avec BulletinPage), en memoire. Pas de Supabase a ce stade.
-// Cette page ne DETIENT plus cet etat : elle le LIT et l'ECRIT via useSaisie. Seul
-// l'onglet actif reste un etat local (pur UI, propre a cette page).
+// ETAPE SANS PERSISTANCE : l'etat des couches (entreprise, liste de salaries) vit
+// dans le SaisieContext (partage avec BulletinPage), en memoire. Pas de Supabase a
+// ce stade. Cette page ne DETIENT pas cet etat : elle le LIT et l'ECRIT via
+// useSaisie. Seuls l'onglet actif et un compteur de remontage du formulaire restent
+// des etats locaux (pur UI, propres a cette page).
+//
+// MULTI-SALARIES : une entreprise a plusieurs salaries. L'onglet salarie permet de
+// LISTER les salaries crees, d'en SELECTIONNER un (le rendre actif) et d'en AJOUTER.
+// Le contexte detient la liste plus l'id du salarie actif ; l'ajout passe par
+// ajouterSalarie (qui selectionne aussi le nouveau salarie).
 //
 // FRONTIERE : les onglets produisent des objets de couches (Entreprise, Salarie).
 // L'UI ne fabrique JAMAIS l'entree plate du moteur a la main et n'appelle jamais
@@ -43,37 +49,55 @@ function formaterMontant(valeur: number): string {
 
 export function SaisiePage() {
   // Etat des couches : detenu par le SaisieContext (partage avec BulletinPage),
-  // pas par cette page. On le lit et on l'ecrit via le contexte.
-  const { entreprise, salarie, setEntreprise, setSalarie } = useSaisie();
+  // pas par cette page. On le lit et on l'ecrit via le contexte. salarieSelectionne
+  // est le DERIVE du contexte (salarie actif retrouve dans la liste).
+  const {
+    entreprise,
+    setEntreprise,
+    salaries,
+    salarieSelectionneId,
+    salarieSelectionne,
+    ajouterSalarie,
+    selectionnerSalarie,
+  } = useSaisie();
   // Onglet actif : pur etat d'UI, local a cette page (rien a partager).
   const [ongletActif, setOngletActif] = useState<Onglet>("entreprise");
+  // Compteur de remontage du formulaire d'ajout : incremente apres chaque ajout
+  // pour repartir d'un formulaire vierge (SalarieForm initialise son etat une seule
+  // fois depuis sa prop ; changer sa key le remonte). Pur UI.
+  const [compteurFormSalarie, setCompteurFormSalarie] = useState(0);
 
   // L'onglet salarie n'existe pas sans entreprise (dependance de couche).
   const salarieAccessible = entreprise !== null;
 
   // Bulletin minimal NON EDITABLE a cette etape (pas d'onglet bulletin). Il sert
-  // uniquement a prouver l'assemblage bout en bout. La duree mensuelle vient du
-  // moteur (HEURES_MENSUELLES_LEGALES), pas d'un nombre magique ecrit ici.
+  // uniquement a prouver l'assemblage bout en bout pour le salarie SELECTIONNE. La
+  // duree mensuelle vient du moteur (HEURES_MENSUELLES_LEGALES), pas d'un nombre
+  // magique ecrit ici.
   const bulletinMinimal = useMemo<BulletinMensuel | null>(() => {
-    if (!salarie) return null;
+    if (!salarieSelectionne) return null;
     return {
-      salarieId: salarie.id,
+      salarieId: salarieSelectionne.id,
       periode: "2026-06",
       heures: HEURES_MENSUELLES_LEGALES,
     };
-  }, [salarie]);
+  }, [salarieSelectionne]);
 
-  // Preuve : entreprise + salarie + bulletin minimal -> assembleur -> moteur.
-  // On passe TOUJOURS par assemblerEntree ; on ne fabrique pas l'entree plate.
+  // Preuve : entreprise + salarie selectionne + bulletin minimal -> assembleur ->
+  // moteur. On passe TOUJOURS par assemblerEntree ; on ne fabrique pas l'entree plate.
   const { bulletin, erreur } = useMemo<{
     bulletin: BulletinCalcule | null;
     erreur: string | null;
   }>(() => {
-    if (!entreprise || !salarie || !bulletinMinimal) {
+    if (!entreprise || !salarieSelectionne || !bulletinMinimal) {
       return { bulletin: null, erreur: null };
     }
     try {
-      const entree = assemblerEntree(entreprise, salarie, bulletinMinimal);
+      const entree = assemblerEntree(
+        entreprise,
+        salarieSelectionne,
+        bulletinMinimal,
+      );
       return {
         bulletin: calculerBulletin(entree, getBareme(entree.legal.bareme)),
         erreur: null,
@@ -83,7 +107,7 @@ export function SaisiePage() {
         e instanceof Error ? e.message : "Erreur d'assemblage inconnue.";
       return { bulletin: null, erreur: message };
     }
-  }, [entreprise, salarie, bulletinMinimal]);
+  }, [entreprise, salarieSelectionne, bulletinMinimal]);
 
   return (
     <main className="bulletin-page">
@@ -109,7 +133,7 @@ export function SaisiePage() {
             salarieAccessible ? undefined : "Creez d'abord une entreprise."
           }
         >
-          Salarie{salarie ? " (enregistre)" : ""}
+          Salaries{salaries.length > 0 ? ` (${salaries.length})` : ""}
         </button>
       </nav>
 
@@ -129,13 +153,50 @@ export function SaisiePage() {
 
       {ongletActif === "salarie" ? (
         <section className="bulletin-section">
-          <h2>Salarie</h2>
+          <h2>Salaries</h2>
           {entreprise ? (
-            <SalarieForm
-              entrepriseId={entreprise.id}
-              salarie={salarie}
-              onSave={(s) => setSalarie(s)}
-            />
+            <>
+              {/* Liste des salaries crees : chacun selectionnable (devient l'actif).
+                  L'actif est marque. Vide au depart. */}
+              {salaries.length === 0 ? (
+                <p>Aucun salarie pour l'instant. Ajoutez-en un ci-dessous.</p>
+              ) : (
+                <ul className="salarie-liste">
+                  {salaries.map((s) => {
+                    const actif = s.id === salarieSelectionneId;
+                    return (
+                      <li key={s.id}>
+                        <button
+                          type="button"
+                          className={actif ? "actif" : ""}
+                          aria-pressed={actif}
+                          onClick={() => selectionnerSalarie(s.id)}
+                        >
+                          {s.prenom} {s.nom} -{" "}
+                          {s.statut === "cadre" ? "Cadre" : "ETAM"} -{" "}
+                          {formaterMontant(s.salaireBaseMensuel)}
+                          {actif ? " (selectionne)" : ""}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              {/* Ajout d'un NOUVEAU salarie. salarie={null} -> formulaire vierge ;
+                  la key le remonte apres chaque ajout pour repartir a vide. onSave
+                  passe par ajouterSalarie (qui selectionne aussi le nouveau). */}
+              <h3>Ajouter un salarie</h3>
+              <SalarieForm
+                key={compteurFormSalarie}
+                entrepriseId={entreprise.id}
+                salarie={null}
+                onSave={(s) => {
+                  ajouterSalarie(s);
+                  setCompteurFormSalarie((n) => n + 1);
+                }}
+              />
+            </>
           ) : (
             <p>Creez d'abord une entreprise dans l'onglet precedent.</p>
           )}
@@ -144,10 +205,10 @@ export function SaisiePage() {
 
       <section className="bulletin-section">
         <h2>Verification de l'assemblage</h2>
-        {!entreprise || !salarie ? (
+        {!entreprise || !salarieSelectionne ? (
           <p>
-            Renseignez l'entreprise puis le salarie pour assembler un bulletin de
-            controle.
+            Renseignez l'entreprise puis selectionnez un salarie pour assembler un
+            bulletin de controle.
           </p>
         ) : erreur ? (
           <p className="bulletin-erreur" role="alert">

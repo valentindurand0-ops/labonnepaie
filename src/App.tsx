@@ -10,9 +10,9 @@ import { SaisiePage } from "./pages/SaisiePage";
 // Declaration des routes de l'application.
 // "/" est protegee, "/login" est publique.
 //
-// SaisieProvider enveloppe toutes les routes : l'etat de saisie (entreprise,
-// salarie) est ainsi PARTAGE entre /saisie (qui le saisit) et /bulletin (qui
-// l'affiche). Version simple sans route layout / Outlet a ce stade (pas de
+// SaisieProvider enveloppe toutes les routes : l'etat de saisie (entreprise et
+// liste de salaries) est ainsi PARTAGE entre /saisie (qui le saisit) et /bulletin
+// (qui l'affiche). Version simple sans route layout / Outlet a ce stade (pas de
 // persistance). /login et / sont sous le provider mais ne le consomment pas.
 export function App() {
   return (
