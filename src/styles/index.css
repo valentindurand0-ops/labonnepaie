@@ -1,4 +1,52 @@
+/* Tokens du design system LaBonnePaie.
+   Vocabulaire de style pose au temps 1 : declare mais pas encore consomme par
+   les regles existantes (le branchement viendra au temps 2). */
 :root {
+  /* Couleurs */
+  --color-primary: #FF6C96;
+  --color-primary-action: #FA5D89;
+  --color-on-primary: #FFFFFF;
+  --color-primary-container: #FFECF1;
+  --color-secondary: #A6BACB;
+  --color-secondary-container: #F3F6F9;
+  --color-success: #3DC4B7;
+  --color-success-text: #08A798;
+  --color-success-container: #DCFFF5;
+  --color-info: #9F6BB7;
+  --color-info-container: #FAF0FF;
+  --color-warning: #E16200;
+  --color-warning-container: #FFEFE0;
+  --color-error: #BE2C0A;
+  --color-text: #222C36;
+  --color-text-secondary: #2E4254;
+  --color-text-muted: rgba(34, 44, 54, 0.5);
+  --color-surface: #FFFFFF;
+  --color-background: #FFEFE0;
+  --color-background-nav: #FEF7EC;
+  --color-border: #D8E1E9;
+
+  /* Polices */
+  --font-serif: 'Fraunces', Georgia, serif;
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  /* Rayons */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-card: 8px;
+  --radius-lg: 12px;
+  --radius-field: 24px;
+  --radius-xxl: 32px;
+  --radius-pill: 9999px;
+
+  /* Ombres */
+  --shadow-card: 0 2px 16px 0 rgba(109, 135, 159, 0.18);
+  --shadow-float: 0 1px 6px 0 rgba(0, 0, 0, 0.06), 0 2px 32px 0 rgba(0, 0, 0, 0.16);
+
+  /* Hauteurs */
+  --button-height: 40px;
+  --field-height: 40px;
+
+  /* Reglages de base d'origine (valeurs litterales inchangees) */
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color: #1a1a1a;
   background-color: #f5f6f8;
