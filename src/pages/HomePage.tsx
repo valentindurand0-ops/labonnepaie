@@ -20,9 +20,9 @@ export function HomePage() {
 
       <section className="home-content">
         <p>Vous etes connecte. Le contenu sera ajoute dans les prochaines etapes.</p>
-        <p>
-          <Link to="/bulletin">Voir un bulletin de paie</Link>
-        </p>
+        {/* Chemin canonique vers un bulletin : Accueil -> /saisie -> fiche
+            /salarie/:id -> "Editer le bulletin du mois". Plus de lien /bulletin
+            generique ici : le bulletin s'ouvre toujours pour un salarie donne. */}
         <p>
           <Link to="/saisie">Saisir une entreprise et un salarie</Link>
         </p>

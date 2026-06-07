@@ -12,9 +12,10 @@ import { FicheSalariePage } from "./pages/FicheSalariePage";
 // "/" est protegee, "/login" est publique.
 //
 // SaisieProvider enveloppe toutes les routes : l'etat de saisie (entreprise et
-// liste de salaries) est ainsi PARTAGE entre /saisie (qui le saisit) et /bulletin
-// (qui l'affiche). Version simple sans route layout / Outlet a ce stade (pas de
-// persistance). /login et / sont sous le provider mais ne le consomment pas.
+// liste de salaries) est ainsi PARTAGE entre /saisie (qui le saisit) et
+// /bulletin/:id (qui l'affiche). Version simple sans route layout / Outlet a ce
+// stade (pas de persistance). /login et / sont sous le provider mais ne le
+// consomment pas.
 export function App() {
   return (
     <AuthProvider>
@@ -31,12 +32,21 @@ export function App() {
               }
             />
             <Route
-              path="/bulletin"
+              path="/bulletin/:id"
               element={
                 <ProtectedRoute>
                   <BulletinPage />
                 </ProtectedRoute>
               }
+            />
+            {/* Repli explicite de l'ancienne route /bulletin nue (sans id de
+                salarie). On renvoie vers /saisie, point de reprise naturel (on y
+                choisit un salarie via sa fiche), plutot que de laisser le
+                catch-all rediriger vers l'accueil et perdre le fil. Intention
+                documentee dans le routeur, pas laissee au hasard. */}
+            <Route
+              path="/bulletin"
+              element={<Navigate to="/saisie" replace />}
             />
             <Route
               path="/saisie"

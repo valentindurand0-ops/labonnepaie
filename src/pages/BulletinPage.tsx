@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import {
   calculerBulletin,
   getBareme,
@@ -12,17 +12,23 @@ import { useSaisie } from "../context/SaisieContext";
 import { HistoriqueBulletins } from "../components/HistoriqueBulletins";
 import { formaterMontant } from "../utils/formatage";
 
-// Page d'AFFICHAGE du bulletin.
+// Page d'AFFICHAGE du bulletin. Route /bulletin/:id ou :id porte un ID DE SALARIE
+// (on affiche "le bulletin du mois POUR ce salarie"). Ce n'est PAS un id de bulletin :
+// les bulletins ne sont pas encore adressables cote UI (couche 4 persistee mais
+// identifiee par la cle naturelle (salarieId, periode), jamais exposee comme id de
+// route). PORTE OUVERTE : le jour ou l'historique offrira "ouvrir un bulletin precis",
+// on introduira une route DISTINCTE /bulletin/:bulletinId, sans casser celle-ci.
 //
-// SOURCE DES DONNEES : l'entreprise (couche 2) et le salarie SELECTIONNE (couche 3)
-// viennent du SaisieContext, donc de ce qui a ete REELLEMENT saisi dans /saisie. Le
-// salarie affiche est le salarie ACTIF (salarieSelectionne) ; on ne change PLUS de
-// salarie ici (le selecteur a disparu en etape 5a). Le seul chemin de selection est
-// la FICHE (/salarie/:id), qui aligne salarieSelectionneId sur l'id de l'URL avant de
-// renvoyer vers cette page. Plus aucune donnee en dur (l'ancien cadre 4000 a disparu).
-// La couche MENSUELLE (couche 4 : periode, heures, prime, conges) est saisie ICI, en
-// etat local : c'est la donnee qui change chaque mois, elle n'a pas sa place dans le
-// contexte partage.
+// SOURCE DES DONNEES : l'entreprise (couche 2) et le salarie (couche 3) viennent du
+// SaisieContext, donc de ce qui a ete REELLEMENT saisi dans /saisie. Le salarie
+// affiche est resolu DIRECTEMENT par l'id de l'URL (salaries.find), exactement comme
+// la fiche /salarie/:id. L'URL est la SOURCE DE VERITE de "quel salarie on regarde" ;
+// elle COMMANDE la selection du contexte (salarieSelectionneId) via un effet de
+// synchro (motif copie de la fiche, etape 5a), sans creer de second etat parallele.
+// salarieSelectionneId reste l'unique source de selection (il pilote la cascade
+// d'historique). Plus aucune donnee en dur (l'ancien cadre 4000 a disparu). La couche
+// MENSUELLE (couche 4 : periode, heures, prime, conges) est saisie ICI, en etat local :
+// c'est la donnee qui change chaque mois, elle n'a pas sa place dans le contexte partage.
 //
 // FRONTIERE : la page ne fabrique JAMAIS l'entree plate du moteur. Elle passe
 // TOUJOURS par assemblerEntree (seul endroit qui reunit les 4 couches) puis
@@ -71,20 +77,41 @@ function TableLignes({
 
 export function BulletinPage() {
   // Couches 2 et 3 : lues dans le contexte partage (saisies dans /saisie). Le
-  // salarie affiche est le salarie SELECTIONNE (derive du contexte). On ne lit plus
-  // la liste ni de quoi changer la selection : le selecteur a disparu (etape 5a), la
-  // selection se fait sur la fiche.
+  // salarie affiche est resolu par l'id de l'URL (voir plus bas). On lit la liste,
+  // l'id selectionne et le selecteur du contexte UNIQUEMENT pour l'effet de synchro
+  // URL -> selection ; salarieSelectionne n'est plus lu (la resolution se fait sur
+  // l'URL, pas sur le derive du contexte).
+  const { id } = useParams<{ id: string }>();
   const {
     entreprise,
     statutEntreprise,
+    salaries,
     statutSalaries,
-    salarieSelectionne,
+    salarieSelectionneId,
+    selectionnerSalarie,
     bulletins,
     statutBulletins,
     erreurBulletins,
     sauvegarderBulletin,
   } = useSaisie();
-  const salarie = salarieSelectionne;
+
+  // SYNCHRONISATION URL -> selection du contexte. Copie EXACTE du motif valide en
+  // 5a dans la fiche salarie : garde !id, anti-set-redondant (id deja l'actif),
+  // salaries.some contre un id fantome (id d'URL absent de la liste). Deps
+  // [id, salaries] : au rechargement direct, la liste arrive APRES le premier rendu,
+  // il faut redeclencher une fois salaries charge. Cet effet est la SEULE ecriture de
+  // la selection ici : l'URL la commande, on ne tient aucun second etat parallele.
+  useEffect(() => {
+    if (!id) return;
+    if (id === salarieSelectionneId) return;
+    if (salaries.some((s) => s.id === id)) {
+      selectionnerSalarie(id);
+    }
+  }, [id, salaries, salarieSelectionneId, selectionnerSalarie]);
+
+  // Resolution du salarie AFFICHE : directement par l'id de l'URL, pour ne pas
+  // dependre d'un rendu de retard sur la selection du contexte.
+  const salarie = salaries.find((s) => s.id === id) ?? null;
 
   // Couche 4 (mensuel) : etat LOCAL a cette page. Les champs numeriques sont
   // stockes en chaine pour gerer proprement la saisie (vide, partielle) avant
@@ -233,9 +260,10 @@ export function BulletinPage() {
     );
   }
 
-  // Garde-fou : sans entreprise ET salarie saisis, pas de bulletin par defaut. On
-  // invite a completer la saisie, sans planter.
-  if (!entreprise || !salarie) {
+  // Garde-fou : sans entreprise OU sans aucun salarie saisi, pas de bulletin par
+  // defaut. On invite a completer la saisie, sans planter. (Le chargement est deja
+  // ecarte au-dessus, donc statutSalaries est "pret" ou "erreur" ici.)
+  if (!entreprise || salaries.length === 0) {
     return (
       <main className="bulletin-page">
         <header className="bulletin-header">
@@ -249,6 +277,27 @@ export function BulletinPage() {
           </p>
           <p>
             <Link to="/saisie">Saisir une entreprise et un salarie</Link>
+          </p>
+        </section>
+      </main>
+    );
+  }
+
+  // Des salaries existent mais l'id de l'URL n'en resout aucun : id fantome
+  // (trafique, supprime, ou d'un autre compte ecarte par la RLS). Wording DISTINCT
+  // de l'invite ci-dessus, coherent avec le motif 5a de la fiche, et affiche
+  // SEULEMENT maintenant (jamais pendant le chargement, deja gere plus haut).
+  if (!salarie) {
+    return (
+      <main className="bulletin-page">
+        <header className="bulletin-header">
+          <h1>Bulletin de paie</h1>
+          <Link to="/">Retour a l'accueil</Link>
+        </header>
+        <section className="bulletin-section">
+          <p>Salarie introuvable.</p>
+          <p>
+            <Link to="/saisie">Revenir a la liste des salaries</Link>
           </p>
         </section>
       </main>

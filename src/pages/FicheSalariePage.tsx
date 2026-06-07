@@ -125,15 +125,11 @@ export function FicheSalariePage() {
 
         <section className="bulletin-section">
           <h2>Bulletin du mois</h2>
-          {/* DEPENDANCE IMPLICITE ASSUMEE : ce lien repose sur le fait que la fiche a
-              deja aligne salarieSelectionneId sur l'id de l'URL (effet de
-              synchronisation ci-dessus). BulletinPage lit le salarie via
-              salarieSelectionne du contexte, PAS via un param d'URL : sans cet
-              alignement prealable elle afficherait le mauvais salarie. RESTE A FAIRE
-              (cf. CLAUDE.md) : passer BulletinPage sur /bulletin/:id pour supprimer
-              cette dependance implicite, condition de suppression de ce commentaire. */}
+          {/* Le lien transporte l'id du salarie : BulletinPage lit son salarie
+              depuis sa propre URL (/bulletin/:id), comme la fiche. Plus aucune
+              dependance implicite a un alignement prealable de la selection. */}
           <p>
-            <Link to="/bulletin">Editer le bulletin du mois</Link>
+            <Link to={`/bulletin/${salarie.id}`}>Editer le bulletin du mois</Link>
           </p>
         </section>
       </main>
