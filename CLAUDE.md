@@ -413,3 +413,50 @@ l'affichage. Il doit être testable seul, avec des tests unitaires par règle de
     login compte B -> aucune entreprise (B ne voit pas celle de A). B enregistre la
     sienne. Re-login A -> l'entreprise A réapparaît inchangée. Côté base : deux lignes
     avec owner_id distincts (INSERT with check via default auth.uid()).
+- ÉTAPE FAITE : PERSISTANCE Supabase, étape 3 (couche d'accès SALARIÉ). Nouveau module
+  src/services/salarieStore.ts, calqué À L'IDENTIQUE sur le patron entrepriseStore.ts
+  (couche STOCKAGE, même famille). PÉRIMÈTRE : juste le module, aucun écran, aucun
+  contexte touché. Le branchement à l'UI / au contexte de saisie reste une étape
+  séparée.
+  - FRONTIÈRE intacte : le moteur (src/engine) et le modèle (src/model) ne lisent
+    jamais la base et n'importent jamais ce module. Sens unique : salarieStore importe
+    src/lib/supabase + des types-only de src/model/types (Salarie, Statut,
+    ConventionCollective). Mapping base <-> modèle secret du fichier (type privé
+    LigneSalarie + deux fonctions privées ligneVersSalarie / salarieVersPayload).
+  - Deux fonctions exposées : chargerSalaries(entrepriseId) -> Salarie[] (filtré
+    .eq("entreprise_id", entrepriseId), ordonné .order("created_at", ascending),
+    renvoie [] si aucun salarié, jamais null) ; enregistrerSalarie(Salarie) ->
+    Salarie (upsert onConflict id, re-mappé depuis .single()).
+  - FILTRE LECTURE à DEUX barrières : la RLS (owner_id = auth.uid()) sécurise déjà ;
+    le .eq("entreprise_id", ...) est une barrière MÉTIER (un compte = une entreprise au
+    proto, mais le modèle pose déjà salarié -> entreprise par référence, donc on cible
+    l'entreprise courante dès aujourd'hui ; correct le jour d'un compte multi-entreprises).
+  - ISOLATION : owner_id jamais manipulé côté client (default auth.uid() à l'INSERT).
+    created_at idem (default now()) : sert UNIQUEMENT de clé de tri dans la requête,
+    jamais dans l'objet renvoyé. Les deux sont jetés à la lecture (absents du modèle).
+  - MUTUELLE laissée PLATE (mutuellePartPatronale? / mutuellePartSalariale?), conforme
+    au modèle actuel : pas de sous-objet, correspondance plate <-> plate 1:1 avec les
+    colonnes mutuelle_part_patronale / mutuelle_part_salariale.
+  - NUMERIC NULLABLES (taux_pas + les deux mutuelles) : à la lecture forme STRICTE
+    row.X == null ? undefined : Number(row.X). On NE FAIT JAMAIS Number(null) (vaut 0,
+    transformerait "non renseigné" en taux/part de 0). À l'écriture s.X ?? null. Les
+    numeric NOT NULL (salaire_base_mensuel) passent par Number() à la lecture (PostgREST
+    peut renvoyer un numeric en chaîne). date_entree : copie directe de la chaîne
+    "AAAA-MM-JJ", surtout pas de Number ni de conversion Date.
+  - DUPLICATION ASSUMÉE : le helper echecStockage est dupliqué à l'identique de
+    entrepriseStore.ts. Règle de trois : on factorisera (module partagé) seulement si un
+    3e store le re-duplique. Deux copies côte à côte restent plus lisibles qu'une
+    abstraction prématurée au proto.
+  - RESTE À FAIRE (dettes assumées, tracées ici) :
+    - typecast statut/convention (text base -> types stricts TS Statut /
+      ConventionCollective) À LA LECTURE : raccourci NON VALIDÉ au runtime, même esprit
+      que le jsonb -> Organismes de l'entreprise. Le store TRANSPORTE, ne valide pas les
+      valeurs métier. Condition de suppression : introduire une validation runtime quand
+      un import externe ou la DSN pourra introduire des valeurs hors domaine (au proto,
+      le CHECK SQL garantit déjà le domaine, donc le typecast ne ment pas).
+    - dette ES2020 sur la cause d'erreur (idem entrepriseStore) : new Error(msg,
+      { cause }) (ES2022) refusé, cause assignée après construction via cast. À remplacer
+      quand la cible passera à ES2022.
+    - étape 4 de la persistance : bulletinStore.ts (même patron), puis branchement des
+      stores salarié / bulletin à l'UI / au contexte de saisie (la couche 3 salaries
+      reste en mémoire tant que ce branchement n'est pas fait).
