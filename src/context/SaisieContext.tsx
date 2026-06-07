@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { Entreprise, Salarie } from "../model/types";
+import type { BulletinMensuel, Entreprise, Salarie } from "../model/types";
 import { useAuth } from "../auth/useAuth";
 import {
   chargerEntreprise,
@@ -17,6 +17,10 @@ import {
   chargerSalaries,
   enregistrerSalarie,
 } from "../services/salarieStore";
+import {
+  chargerBulletins,
+  enregistrerBulletin,
+} from "../services/bulletinStore";
 
 // CONTEXTE PARTAGE des couches de SAISIE : entreprise (couche 2) et salaries
 // (couche 3). Il existe pour qu'un MEME etat soit lu et ecrit par PLUSIEURS ecrans
@@ -30,13 +34,17 @@ import {
 //     via chargerEntreprise() (statutEntreprise : 'chargement' -> 'pret' | 'erreur').
 //     Une fois l'entreprise PRETE et connue, un second effet charge ses salaries via
 //     chargerSalaries(entreprise.id) (statutSalaries suit le meme cycle). Les salaries
-//     dependent de l'entreprise : leur chargement vient APRES, jamais avant.
-//   - ECRITURE : sauvegarderEntreprise / ajouterSalarie / modifierSalarie persistent
-//     via le store PUIS posent dans l'etat l'objet RE-MAPPE renvoye par la base. On
-//     n'ecrit en memoire qu'APRES confirmation base (pas d'optimistic update) : en cas
-//     d'echec, l'action rejette sans toucher l'etat, l'ecran attrape et affiche.
-//     setEntreprise / setSalaries ne recoivent jamais que des objets venus de la base,
-//     pour que l'etat memoire reste un reflet fidele du stockage.
+//     dependent de l'entreprise : leur chargement vient APRES, jamais avant. Un
+//     troisieme effet charge l'historique (couche 4) du SEUL salarie ACTIF via
+//     chargerBulletins(salarieSelectionneId) (statutBulletins suit le meme cycle) :
+//     l'historique depend du salarie selectionne, son chargement vient APRES.
+//   - ECRITURE : sauvegarderEntreprise / ajouterSalarie / modifierSalarie /
+//     sauvegarderBulletin persistent via le store PUIS posent dans l'etat l'objet
+//     RE-MAPPE renvoye par la base. On n'ecrit en memoire qu'APRES confirmation base
+//     (pas d'optimistic update) : en cas d'echec, l'action rejette sans toucher l'etat,
+//     l'ecran attrape et affiche. setEntreprise / setSalaries / setBulletins ne
+//     recoivent jamais que des objets venus de la base, pour que l'etat memoire reste
+//     un reflet fidele du stockage.
 //
 // FRONTIERE, non negociable : seule cette couche contexte/UI importe le store (et,
 // indirectement, Supabase). Le moteur (src/engine) et le modele (src/model)
@@ -53,8 +61,11 @@ import {
 // simple DERIVE, recalcule par recherche dans la liste a chaque rendu ; les seules
 // sources de verite sont salaries et salarieSelectionneId.
 //
-// La couche MENSUELLE (couche 4 : periode, heures, prime, conges) n'est PAS ici :
-// elle est saisie chaque mois et reste locale a BulletinPage.
+// La couche MENSUELLE (couche 4) est ici sous forme d'HISTORIQUE PERSISTE : bulletins
+// est la liste des bulletins deja enregistres du salarie ACTIF (lecture seule du point
+// de vue des ecrans, source de verite unique de l'historique courant). En revanche le
+// bulletin EN COURS DE SAISIE (le mois qu'on edite, pas encore enregistre) reste local
+// a BulletinPage : le contexte ne porte que ce qui est durci en base.
 
 // Statut du cycle de LECTURE de l'entreprise. Le cas "pas encore d'entreprise" n'est
 // PAS un statut a part : il se DEDUIT de (statutEntreprise === "pret" && entreprise
@@ -65,6 +76,12 @@ export type StatutEntreprise = "chargement" | "pret" | "erreur";
 // "aucun salarie" n'est PAS un statut a part : il se DEDUIT de (statutSalaries ===
 // "pret" && salaries.length === 0).
 export type StatutSalaries = "chargement" | "pret" | "erreur";
+
+// Statut du cycle de LECTURE de l'historique du salarie actif. Meme tryptique. Le cas
+// "aucun bulletin" n'est PAS un statut a part : il se DEDUIT de (statutBulletins ===
+// "pret" && bulletins.length === 0). Le cas "aucun salarie selectionne" est aussi
+// "pret" avec bulletins vide : il n'y a rien a charger.
+export type StatutBulletins = "chargement" | "pret" | "erreur";
 
 interface SaisieContextValue {
   // Couche 2 : objet racine. null = soit pas encore charge (statut "chargement"),
@@ -106,6 +123,23 @@ interface SaisieContextValue {
   // l'upsert) PUIS remplace dans la liste celui de meme id (objet re-mappe), sans
   // toucher a la selection. Rejette si l'ecriture echoue, sans toucher l'etat. Async.
   modifierSalarie: (salarie: Salarie) => Promise<void>;
+
+  // Couche 4 : HISTORIQUE persiste du salarie ACTIF (vide si aucun salarie selectionne),
+  // ordonne par periode croissante. Unique source de verite de l'historique courant :
+  // pas de copie ni de cache par salarie a resynchroniser, il se recharge a chaque
+  // changement de salarie actif.
+  bulletins: BulletinMensuel[];
+  // Etat du cycle de lecture de l'historique (cascade apres le salarie actif).
+  statutBulletins: StatutBulletins;
+  // Message d'erreur de LECTURE des bulletins (non null seulement quand statutBulletins
+  // vaut "erreur"). L'erreur d'ECRITURE remonte par le rejet de sauvegarderBulletin,
+  // geree localement par l'ecran appelant.
+  erreurBulletins: string | null;
+  // Persiste un bulletin (creation ou mise a jour, cle naturelle salarieId + periode)
+  // via le store PUIS upsert en memoire dans bulletins (remplace la ligne de meme
+  // periode si elle existe, sinon ajoute), re-trie par periode. Rejette si l'ecriture
+  // echoue, sans toucher l'etat. Async par nature.
+  sauvegarderBulletin: (bulletin: BulletinMensuel) => Promise<void>;
 }
 
 const SaisieContext = createContext<SaisieContextValue | null>(null);
@@ -133,6 +167,14 @@ export function SaisieProvider({ children }: { children: ReactNode }) {
   const [statutSalaries, setStatutSalaries] =
     useState<StatutSalaries>("chargement");
   const [erreurSalaries, setErreurSalaries] = useState<string | null>(null);
+
+  // Source de verite de la couche 4 : l'historique du salarie ACTIF. Recharge a chaque
+  // changement de salarie actif (cascade apres la selection). Initial "chargement" :
+  // au montage le salarie actif n'est pas encore resolu.
+  const [bulletins, setBulletins] = useState<BulletinMensuel[]>([]);
+  const [statutBulletins, setStatutBulletins] =
+    useState<StatutBulletins>("chargement");
+  const [erreurBulletins, setErreurBulletins] = useState<string | null>(null);
 
   // LECTURE de l'entreprise au changement de session. Depend de user?.id (pas de
   // l'objet user, qui change a chaque refresh de token pour le meme compte) et de
@@ -253,6 +295,48 @@ export function SaisieProvider({ children }: { children: ReactNode }) {
     };
   }, [statutEntreprise, entreprise?.id]);
 
+  // LECTURE EN CASCADE de l'historique (couche 4), APRES la selection du salarie. Suit
+  // le salarie ACTIF quelle que soit la facon dont il l'est devenu (auto-selection de
+  // liste[0] OU clic utilisateur) : on ne distingue PAS les deux, donc pas d'etat
+  // "selection manuelle ou auto" en plus. Quand un salarie est actif, son historique se
+  // charge ; quand salarieSelectionneId est null, il n'y a RIEN a charger (bulletins
+  // vide, statut "pret"). annule protege contre une resolution tardive : au changement
+  // rapide de salarie, une reponse en retard ne doit pas ecraser l'historique du salarie
+  // courant.
+  useEffect(() => {
+    // Aucun salarie actif (liste vide, deconnecte, ou pas encore selectionne) : rien a
+    // charger, historique vide, statut "pret".
+    if (!salarieSelectionneId) {
+      setBulletins([]);
+      setErreurBulletins(null);
+      setStatutBulletins("pret");
+      return;
+    }
+
+    let annule = false;
+    setStatutBulletins("chargement");
+    setErreurBulletins(null);
+    chargerBulletins(salarieSelectionneId)
+      .then((liste) => {
+        if (annule) return;
+        setBulletins(liste);
+        setStatutBulletins("pret");
+      })
+      .catch((err) => {
+        if (annule) return;
+        setStatutBulletins("erreur");
+        setErreurBulletins(
+          err instanceof Error
+            ? err.message
+            : "Lecture des bulletins impossible.",
+        );
+      });
+
+    return () => {
+      annule = true;
+    };
+  }, [salarieSelectionneId]);
+
   // ECRITURE : persiste puis adopte l'objet re-mappe par la base. En cas d'echec, on
   // laisse l'erreur remonter (rejet) SANS toucher a l'etat memoire : l'appelant
   // affiche l'erreur, l'entreprise affichee reste celle d'avant. Un succes remet
@@ -293,6 +377,25 @@ export function SaisieProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  // Persiste d'ABORD via le store, puis upsert en memoire l'objet RE-MAPPE par la base
+  // (pas d'optimistic update). Upsert par cle naturelle (salarieId + periode) : si un
+  // bulletin de meme periode existe deja on le remplace, sinon on ajoute ; puis on
+  // re-trie par periode pour garder l'historique chronologique (meme ordre que la
+  // lecture). bulletins reste l'unique source de verite de l'historique actif : pas de
+  // cache par salarie a resynchroniser. En cas d'echec, enregistrerBulletin rejette : on
+  // ne touche pas l'etat, l'appelant attrape.
+  const sauvegarderBulletin = useCallback(async (bulletin: BulletinMensuel) => {
+    const persiste = await enregistrerBulletin(bulletin);
+    setBulletins((prev) => {
+      const fusion = prev.some((b) => b.periode === persiste.periode)
+        ? prev.map((b) => (b.periode === persiste.periode ? persiste : b))
+        : [...prev, persiste];
+      return fusion
+        .slice()
+        .sort((a, b) => a.periode.localeCompare(b.periode));
+    });
+  }, []);
+
   // DERIVE : recalcule a chaque rendu par recherche dans la liste. Pas de useState
   // dedie, pour qu'il ne puisse jamais se desynchroniser de salaries.
   const salarieSelectionne =
@@ -312,6 +415,10 @@ export function SaisieProvider({ children }: { children: ReactNode }) {
       ajouterSalarie,
       selectionnerSalarie,
       modifierSalarie,
+      bulletins,
+      statutBulletins,
+      erreurBulletins,
+      sauvegarderBulletin,
     }),
     [
       entreprise,
@@ -326,6 +433,10 @@ export function SaisieProvider({ children }: { children: ReactNode }) {
       ajouterSalarie,
       selectionnerSalarie,
       modifierSalarie,
+      bulletins,
+      statutBulletins,
+      erreurBulletins,
+      sauvegarderBulletin,
     ],
   );
 

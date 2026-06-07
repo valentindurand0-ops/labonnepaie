@@ -460,3 +460,63 @@ l'affichage. Il doit être testable seul, avec des tests unitaires par règle de
     - étape 4 de la persistance : bulletinStore.ts (même patron), puis branchement des
       stores salarié / bulletin à l'UI / au contexte de saisie (la couche 3 salaries
       reste en mémoire tant que ce branchement n'est pas fait).
+- ÉTAPE FAITE : PERSISTANCE Supabase, étape 4 (couche d'accès BULLETIN + branchement de
+  l'historique au contexte de saisie). Nouveau module src/services/bulletinStore.ts sur
+  le patron salarieStore.ts, ET branchement dans SaisieContext (3e effet de cascade +
+  action sauvegarderBulletin). La couche 4 devient DURABLE : l'historique du salarié
+  actif est lu depuis Supabase, un bulletin enregistré y est upserté.
+  - FRONTIÈRE intacte : le moteur (src/engine) et le modèle (src/model) ne lisent jamais
+    la base et n'importent jamais ce module. Sens unique : bulletinStore importe
+    src/lib/supabase + un type-only de src/model/types (BulletinMensuel). Mapping base
+    <-> modèle secret du fichier (type privé LigneBulletin + PayloadBulletin + deux
+    fonctions privées ligneVersBulletin / bulletinVersPayload).
+  - Deux fonctions exposées : chargerBulletins(salarieId) -> BulletinMensuel[] (filtré
+    .eq("salarie_id", salarieId), ordonné .order("periode", ascending), renvoie [] si
+    aucun bulletin, jamais null) ; enregistrerBulletin(BulletinMensuel) ->
+    BulletinMensuel (upsert onConflict "salarie_id,periode", re-mappé depuis .single()).
+  - FILTRE LECTURE à DEUX barrières : la RLS (owner_id = auth.uid()) sécurise déjà ; le
+    .eq("salarie_id", ...) est une barrière MÉTIER qui cible l'historique du salarié
+    courant. Même patron que salarieStore.
+  - ÉCARTS ASSUMÉS vs entreprise/salarie (documentés en tête de bulletinStore) :
+    - ID SURROGATE FANTÔME : BulletinMensuel n'a PAS de id dans le modèle. La table en
+      porte un (clé technique), présent dans LigneBulletin (privé) mais JETÉ par
+      ligneVersBulletin comme owner_id et created_at. Il ne remonte JAMAIS au modèle :
+      l'UI identifie un bulletin par (salarieId, periode), jamais par id.
+    - CLÉ NATURELLE MÉTIER (salarie_id, periode) : l'upsert porte sur cette clé (un seul
+      bulletin par salarié et par mois, contrainte unique en base), là où
+      entreprise/salarie upsertent sur id. PayloadBulletin omet donc l'id surrogate.
+    - TRI PAR PÉRIODE LEXICOGRAPHIQUE : l'historique se lit dans l'ordre du MOIS
+      (.order("periode")), pas par created_at. Format "AAAA-MM" => lexicographique ==
+      chronologique. L'ordre métier de l'historique est le mois, pas l'insertion.
+  - NUMERIC : Number() sur heures (NOT NULL, PostgREST peut renvoyer en chaîne) ; forme
+    STRICTE x == null ? undefined : Number(x) sur prime_soumise et jours_conges
+    (nullables, JAMAIS Number(null) qui vaut 0). À l'écriture x ?? null. periode = chaîne
+    copiée directement, aucune conversion.
+  - DUPLICATION ASSUMÉE : helper echecStockage dupliqué à l'identique des deux autres
+    stores. La règle de trois est atteinte (3e copie) ; on garde trois copies lisibles au
+    proto, la factorisation viendra avec un nettoyage dédié (même dette ES2020 sur
+    .cause, déjà tracée plus haut).
+  - BRANCHEMENT CONTEXTE (SaisieContext.tsx) : nouvel état bulletins: BulletinMensuel[]
+    (historique du SEUL salarié actif) + statutBulletins / erreurBulletins (même
+    tryptique chargement/pret/erreur que les deux couches au-dessus). 3e effet en
+    cascade dépendant de [salarieSelectionneId] : null -> bulletins = [], statut "pret",
+    rien à charger ; non null -> chargerBulletins(salarieSelectionneId) avec la même
+    garde "annule" contre les résolutions tardives. L'historique suit le salarié ACTIF
+    sans distinguer auto-sélection de liste[0] et clic utilisateur (pas d'état "manuel
+    vs auto"). Action sauvegarderBulletin(b) sur le moule d'ajouterSalarie : persiste via
+    enregistrerBulletin PUIS upsert en mémoire par clé naturelle (remplace la ligne de
+    même periode, sinon ajoute), re-trie par periode, sans optimistic update. bulletins
+    reste l'unique source de vérité de l'historique actif, aucun cache par salarié.
+  - PÉRIMÈTRE : AUCUN écran n'est encore branché sur sauvegarderBulletin à cette étape
+    (l'action est juste exposée dans le contexte, comme modifierSalarie a été posé avant
+    son écran). Le branchement de BulletinPage (afficher l'historique, enregistrer le
+    mois saisi) reste l'étape suivante. Typecheck propre, 86 tests verts inchangés
+    (moteur et modèle non touchés).
+  - RESTE À FAIRE (dettes assumées, tracées ici) :
+    - supprimerBulletin(salarieId, periode) à ajouter le JOUR où l'UI offrira "supprimer
+      un mois", PAS avant (ne pas coder de mort). Même patron : DELETE filtré sur la clé
+      naturelle, puis retrait en mémoire de la ligne de même periode.
+    - brancher BulletinPage sur l'historique (bulletins) et sur sauvegarderBulletin :
+      afficher les mois déjà enregistrés, persister le mois en cours de saisie.
+    - dette ES2020 sur la cause d'erreur (idem entreprise/salarie) : à remplacer quand la
+      cible passera à ES2022.
