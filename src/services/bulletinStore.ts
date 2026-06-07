@@ -26,10 +26,12 @@
 //      contrainte unique en base), la ou entreprise/salarie upsertent sur id. Le
 //      PayloadBulletin omet donc l'id : c'est la cle naturelle qui decide insert vs
 //      update, pas une cle primaire fabriquee cote client.
-//   3. TRI PAR PERIODE LEXICOGRAPHIQUE : l'historique se lit dans l'ordre du MOIS
-//      (.order("periode")), pas par created_at. Le format "AAAA-MM" rend l'ordre
-//      lexicographique == ordre chronologique. L'ordre metier de l'historique est le
-//      mois, pas l'ordre d'insertion.
+//   3. TRI PAR PERIODE LEXICOGRAPHIQUE DECROISSANTE : l'historique se lit dans l'ordre
+//      du MOIS (.order("periode")), pas par created_at. Le format "AAAA-MM" rend l'ordre
+//      lexicographique == ordre chronologique. Sens DECROISSANT : le mois le plus recent
+//      en tete, attendu metier d'un historique de bulletins. L'ordre metier de
+//      l'historique est le mois, pas l'ordre d'insertion. Ce store est la seule source
+//      de tri en lecture ; l'ecran consomme l'ordre tel quel, ne re-trie jamais.
 
 import { supabase } from "../lib/supabase";
 import type { BulletinMensuel } from "../model/types";
@@ -115,10 +117,10 @@ function echecStockage(message: string, cause: unknown): never {
   throw erreur;
 }
 
-// Lit les bulletins d'un salarie, ordonnes par PERIODE croissante (ordre chronologique
-// de l'historique, "AAAA-MM" => lexicographique == chronologique). Renvoie [] si aucun
-// bulletin (jamais null) : l'absence se lit sur la longueur. La RLS restreint deja aux
-// lignes du compte ; le .eq("salarie_id", ...) cible le salarie courant.
+// Lit les bulletins d'un salarie, ordonnes par PERIODE decroissante (mois le plus recent
+// en tete, "AAAA-MM" => lexicographique == chronologique). Renvoie [] si aucun bulletin
+// (jamais null) : l'absence se lit sur la longueur. La RLS restreint deja aux lignes du
+// compte ; le .eq("salarie_id", ...) cible le salarie courant.
 export async function chargerBulletins(
   salarieId: string,
 ): Promise<BulletinMensuel[]> {
@@ -126,7 +128,7 @@ export async function chargerBulletins(
     .from("bulletin_mensuel")
     .select("*")
     .eq("salarie_id", salarieId)
-    .order("periode", { ascending: true });
+    .order("periode", { ascending: false });
 
   if (error) {
     echecStockage("Lecture des bulletins impossible (droits ou connexion).", error);

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   calculerBulletin,
@@ -88,6 +88,10 @@ export function BulletinPage() {
     salarieSelectionne,
     salarieSelectionneId,
     selectionnerSalarie,
+    bulletins,
+    statutBulletins,
+    erreurBulletins,
+    sauvegarderBulletin,
   } = useSaisie();
   const salarie = salarieSelectionne;
 
@@ -99,17 +103,37 @@ export function BulletinPage() {
   const [primeSoumise, setPrimeSoumise] = useState("0");
   const [joursConges, setJoursConges] = useState("0");
 
+  // Etat LOCAL de l'enregistrement du mois saisi (meme patron que la sauvegarde
+  // entreprise dans SaisiePage). erreurEnregistrement porte l'echec d'ECRITURE
+  // (distinct de erreur, qui porte l'invalidite de la couche 4). messageSucces est
+  // honnete sur l'ecrasement par cle naturelle (cf. handleEnregistrer) : "Mois
+  // enregistre" pour une creation, "Mois mis a jour" pour un remplacement.
+  const [enregistrementEnCours, setEnregistrementEnCours] = useState(false);
+  const [erreurEnregistrement, setErreurEnregistrement] = useState<string | null>(
+    null,
+  );
+  const [messageSucces, setMessageSucces] = useState<string | null>(null);
+
   // Recalcul reactif. Si l'entreprise ou le salarie manque, on ne calcule rien
   // (l'ecran invite a completer la saisie). Sinon on valide la couche 4 puis on
   // passe par assemblerEntree -> calculerBulletin. Aucune logique de paie ici :
   // seulement la validation de la saisie mensuelle.
-  const { bulletin, erreur, baremeReference } = useMemo<{
+  const { bulletin, erreur, baremeReference, bulletinMensuel } = useMemo<{
     bulletin: BulletinCalcule | null;
     erreur: string | null;
     baremeReference: string | null;
+    // Objet d'ENTREES de la couche 4 deja valide. Non null exactement quand le calcul
+    // a reussi (bulletin non null). Le handler de sauvegarde le persiste TEL QUEL :
+    // c'est un objet d'entrees (jamais de sorties), aucune seconde validation.
+    bulletinMensuel: BulletinMensuel | null;
   }>(() => {
     if (!entreprise || !salarie) {
-      return { bulletin: null, erreur: null, baremeReference: null };
+      return {
+        bulletin: null,
+        erreur: null,
+        baremeReference: null,
+        bulletinMensuel: null,
+      };
     }
     try {
       const heuresNum = Number(heures);
@@ -149,12 +173,54 @@ export function BulletinPage() {
         bulletin: calculerBulletin(entree, bareme),
         erreur: null,
         baremeReference: entree.legal.bareme,
+        bulletinMensuel,
       };
     } catch (e) {
       const message = e instanceof Error ? e.message : "Erreur de calcul inconnue.";
-      return { bulletin: null, erreur: message, baremeReference: null };
+      return {
+        bulletin: null,
+        erreur: message,
+        baremeReference: null,
+        bulletinMensuel: null,
+      };
     }
   }, [entreprise, salarie, periode, heures, primeSoumise, joursConges]);
+
+  // Tout changement de la saisie (couche 4) ou de salarie efface les messages
+  // d'enregistrement : un "Mois enregistre" ne doit pas trainer alors que la saisie a
+  // change depuis. Les messages ne refletent donc TOUJOURS que le dernier etat sauve.
+  useEffect(() => {
+    setMessageSucces(null);
+    setErreurEnregistrement(null);
+  }, [periode, heures, primeSoumise, joursConges, salarie?.id]);
+
+  // Enregistre le mois saisi. bulletinMensuel est l'objet d'ENTREES deja valide par le
+  // useMemo : on le persiste tel quel, pas de seconde validation. AVANT l'appel, on
+  // teste si la periode existe deja dans l'historique pour un message HONNETE : la cle
+  // naturelle (salarieId, periode) fait que sauvegarderBulletin ECRASE la ligne de meme
+  // periode au lieu de creer un doublon. En cas d'echec d'ecriture, la saisie n'est pas
+  // perdue (le contexte ne touche pas l'etat sur rejet) et l'erreur s'affiche.
+  const handleEnregistrer = async () => {
+    if (!bulletinMensuel) {
+      return;
+    }
+    const periodeDejaPresente = bulletins.some(
+      (b) => b.periode === bulletinMensuel.periode,
+    );
+    setEnregistrementEnCours(true);
+    setErreurEnregistrement(null);
+    setMessageSucces(null);
+    try {
+      await sauvegarderBulletin(bulletinMensuel);
+      setMessageSucces(periodeDejaPresente ? "Mois mis a jour" : "Mois enregistre");
+    } catch (e) {
+      setErreurEnregistrement(
+        e instanceof Error ? e.message : "Enregistrement du mois impossible.",
+      );
+    } finally {
+      setEnregistrementEnCours(false);
+    }
+  };
 
   // Pendant la lecture initiale de l'entreprise depuis le stockage, on n'affiche ni
   // bulletin ni invite "completez la saisie" : on ne sait pas encore s'il y a une
@@ -301,6 +367,67 @@ export function BulletinPage() {
             onChange={(e) => setJoursConges(e.target.value)}
           />
         </label>
+
+        {/* Enregistrement du mois saisi. type="button" : pas de <form> ici, mais on se
+            premunit contre toute soumission implicite. Desactive si le calcul n'est pas
+            valide (bulletin null ou erreur de couche 4) ou pendant l'ecriture. */}
+        <div className="bulletin-enregistrer">
+          <button
+            type="button"
+            onClick={handleEnregistrer}
+            disabled={!bulletin || erreur !== null || enregistrementEnCours}
+          >
+            {enregistrementEnCours ? "Enregistrement..." : "Enregistrer ce mois"}
+          </button>
+          {erreurEnregistrement ? (
+            <p className="bulletin-erreur" role="alert">
+              {erreurEnregistrement}
+            </p>
+          ) : messageSucces ? (
+            <p className="bulletin-succes">{messageSucces}</p>
+          ) : null}
+        </div>
+      </section>
+
+      {/* Historique en LECTURE SEULE du salarie actif, sous le formulaire et au-dessus
+          du bulletin calcule : le mois fraichement enregistre apparait en tete (tri
+          decroissant fait par le store / le contexte, jamais ici) juste sous le bouton.
+          On affiche UNIQUEMENT les entrees de la couche 4, jamais les sorties du moteur.
+          Les trois etats de statutBulletins sont cantonnes a cette section : une lecture
+          d'historique en echec n'empeche ni la saisie ni le calcul ci-dessous. Un clic
+          sur une ligne ne fait rien (re-edition d'un mois passe = etape ulterieure). */}
+      <section className="bulletin-section">
+        <h2>Historique des bulletins enregistres</h2>
+        {statutBulletins === "chargement" ? (
+          <p>Chargement de l'historique...</p>
+        ) : statutBulletins === "erreur" ? (
+          <p className="bulletin-erreur" role="alert">
+            {erreurBulletins}
+          </p>
+        ) : bulletins.length === 0 ? (
+          <p>Aucun mois enregistre pour ce salarie.</p>
+        ) : (
+          <table className="bulletin-table">
+            <thead>
+              <tr>
+                <th>Periode</th>
+                <th className="num">Heures</th>
+                <th className="num">Prime soumise</th>
+                <th className="num">Jours de conges</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bulletins.map((b) => (
+                <tr key={b.periode}>
+                  <td>{b.periode}</td>
+                  <td className="num">{b.heures}</td>
+                  <td className="num">{formaterMontant(b.primeSoumise ?? 0)}</td>
+                  <td className="num">{b.joursConges ?? 0}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </section>
 
       {erreur ? (

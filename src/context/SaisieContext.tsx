@@ -125,9 +125,9 @@ interface SaisieContextValue {
   modifierSalarie: (salarie: Salarie) => Promise<void>;
 
   // Couche 4 : HISTORIQUE persiste du salarie ACTIF (vide si aucun salarie selectionne),
-  // ordonne par periode croissante. Unique source de verite de l'historique courant :
-  // pas de copie ni de cache par salarie a resynchroniser, il se recharge a chaque
-  // changement de salarie actif.
+  // ordonne par periode decroissante (mois le plus recent en tete). Unique source de
+  // verite de l'historique courant : pas de copie ni de cache par salarie a
+  // resynchroniser, il se recharge a chaque changement de salarie actif.
   bulletins: BulletinMensuel[];
   // Etat du cycle de lecture de l'historique (cascade apres le salarie actif).
   statutBulletins: StatutBulletins;
@@ -137,8 +137,8 @@ interface SaisieContextValue {
   erreurBulletins: string | null;
   // Persiste un bulletin (creation ou mise a jour, cle naturelle salarieId + periode)
   // via le store PUIS upsert en memoire dans bulletins (remplace la ligne de meme
-  // periode si elle existe, sinon ajoute), re-trie par periode. Rejette si l'ecriture
-  // echoue, sans toucher l'etat. Async par nature.
+  // periode si elle existe, sinon ajoute), re-trie par periode decroissante. Rejette si
+  // l'ecriture echoue, sans toucher l'etat. Async par nature.
   sauvegarderBulletin: (bulletin: BulletinMensuel) => Promise<void>;
 }
 
@@ -380,10 +380,10 @@ export function SaisieProvider({ children }: { children: ReactNode }) {
   // Persiste d'ABORD via le store, puis upsert en memoire l'objet RE-MAPPE par la base
   // (pas d'optimistic update). Upsert par cle naturelle (salarieId + periode) : si un
   // bulletin de meme periode existe deja on le remplace, sinon on ajoute ; puis on
-  // re-trie par periode pour garder l'historique chronologique (meme ordre que la
-  // lecture). bulletins reste l'unique source de verite de l'historique actif : pas de
-  // cache par salarie a resynchroniser. En cas d'echec, enregistrerBulletin rejette : on
-  // ne touche pas l'etat, l'appelant attrape.
+  // re-trie par periode decroissante pour garder l'historique (mois le plus recent en
+  // tete, meme ordre que la lecture). bulletins reste l'unique source de verite de
+  // l'historique actif : pas de cache par salarie a resynchroniser. En cas d'echec,
+  // enregistrerBulletin rejette : on ne touche pas l'etat, l'appelant attrape.
   const sauvegarderBulletin = useCallback(async (bulletin: BulletinMensuel) => {
     const persiste = await enregistrerBulletin(bulletin);
     setBulletins((prev) => {
@@ -392,7 +392,7 @@ export function SaisieProvider({ children }: { children: ReactNode }) {
         : [...prev, persiste];
       return fusion
         .slice()
-        .sort((a, b) => a.periode.localeCompare(b.periode));
+        .sort((a, b) => b.periode.localeCompare(a.periode));
     });
   }, []);
 
