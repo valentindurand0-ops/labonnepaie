@@ -22,9 +22,12 @@ ailleurs. Aucun fichier de `src/` ne depend de ce SQL.
   les triggers de coherence du proprietaire le long des liens (un salarie ne peut pas
   pointer vers l'entreprise d'un autre compte ; un bulletin ne peut pas pointer vers
   le salarie d'un autre compte).
+- `migrations/0003_owner_id_default.sql` : corrige le `default auth.uid()` manquant
+  sur `owner_id` dans 0001 (sans ce default, le client n'envoyant jamais `owner_id`,
+  tout INSERT echouait en RLS, code 42501).
 
 Les migrations sont horodatees / numerotees et s'appliquent dans l'ordre (0001 puis
-0002).
+0002 puis 0003).
 
 ## Choix de modelisation (rappel)
 

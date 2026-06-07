@@ -1,6 +1,10 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { assemblerEntree, type BulletinMensuel } from "../model/types";
+import {
+  assemblerEntree,
+  type BulletinMensuel,
+  type Entreprise,
+} from "../model/types";
 import {
   calculerBulletin,
   getBareme,
@@ -53,7 +57,9 @@ export function SaisiePage() {
   // est le DERIVE du contexte (salarie actif retrouve dans la liste).
   const {
     entreprise,
-    setEntreprise,
+    statutEntreprise,
+    erreurEntreprise,
+    sauvegarderEntreprise,
     salaries,
     salarieSelectionneId,
     salarieSelectionne,
@@ -66,6 +72,32 @@ export function SaisiePage() {
   // pour repartir d'un formulaire vierge (SalarieForm initialise son etat une seule
   // fois depuis sa prop ; changer sa key le remonte). Pur UI.
   const [compteurFormSalarie, setCompteurFormSalarie] = useState(0);
+  // Etat local de l'ECRITURE de l'entreprise (la lecture, elle, vient du contexte).
+  // L'erreur d'ecriture est distincte de l'erreur de lecture (erreurEntreprise).
+  const [enregistrementEnCours, setEnregistrementEnCours] = useState(false);
+  const [erreurEnregistrement, setErreurEnregistrement] = useState<
+    string | null
+  >(null);
+
+  // Orchestration de l'ecriture : on persiste via le contexte (qui re-mappe et pose
+  // l'objet venu de la base), on ne bascule sur l'onglet salarie qu'au SUCCES, et on
+  // affiche l'erreur sans perdre la saisie en cas d'echec.
+  async function enregistrerEntreprise(e: Entreprise) {
+    setEnregistrementEnCours(true);
+    setErreurEnregistrement(null);
+    try {
+      await sauvegarderEntreprise(e);
+      setOngletActif("salarie");
+    } catch (err) {
+      setErreurEnregistrement(
+        err instanceof Error
+          ? err.message
+          : "Enregistrement de l'entreprise impossible.",
+      );
+    } finally {
+      setEnregistrementEnCours(false);
+    }
+  }
 
   // L'onglet salarie n'existe pas sans entreprise (dependance de couche).
   const salarieAccessible = entreprise !== null;
@@ -140,14 +172,36 @@ export function SaisiePage() {
       {ongletActif === "entreprise" ? (
         <section className="bulletin-section">
           <h2>Entreprise</h2>
-          <EntrepriseForm
-            entreprise={entreprise}
-            onSave={(e) => {
-              setEntreprise(e);
-              // Apres creation de l'entreprise, on oriente vers l'onglet salarie.
-              setOngletActif("salarie");
-            }}
-          />
+          {/* Pendant la lecture initiale depuis le stockage, on n'affiche pas le
+              formulaire (sinon il clignoterait vide avant d'etre hydrate). */}
+          {statutEntreprise === "chargement" ? (
+            <p>Chargement de l'entreprise...</p>
+          ) : (
+            <>
+              {/* Erreur de LECTURE : on l'affiche mais on laisse le formulaire
+                  accessible (saisie manuelle possible en repli). */}
+              {statutEntreprise === "erreur" && erreurEntreprise ? (
+                <p className="bulletin-erreur" role="alert">
+                  {erreurEntreprise}
+                </p>
+              ) : null}
+
+              <EntrepriseForm
+                entreprise={entreprise}
+                onSave={(e) => void enregistrerEntreprise(e)}
+              />
+
+              {/* Etats de l'ECRITURE (distincts de la lecture). */}
+              {enregistrementEnCours ? (
+                <p className="recherche-statut">Enregistrement en cours...</p>
+              ) : null}
+              {erreurEnregistrement ? (
+                <p className="bulletin-erreur" role="alert">
+                  {erreurEnregistrement}
+                </p>
+              ) : null}
+            </>
+          )}
         </section>
       ) : null}
 

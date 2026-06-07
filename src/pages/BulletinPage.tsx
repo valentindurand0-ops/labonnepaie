@@ -80,8 +80,14 @@ export function BulletinPage() {
   // Couches 2 et 3 : lues dans le contexte partage (saisies dans /saisie). Le
   // salarie affiche est le salarie SELECTIONNE (derive du contexte). On lit aussi la
   // liste et de quoi changer la selection, pour offrir un selecteur de salarie.
-  const { entreprise, salaries, salarieSelectionne, salarieSelectionneId, selectionnerSalarie } =
-    useSaisie();
+  const {
+    entreprise,
+    statutEntreprise,
+    salaries,
+    salarieSelectionne,
+    salarieSelectionneId,
+    selectionnerSalarie,
+  } = useSaisie();
   const salarie = salarieSelectionne;
 
   // Couche 4 (mensuel) : etat LOCAL a cette page. Les champs numeriques sont
@@ -148,6 +154,23 @@ export function BulletinPage() {
       return { bulletin: null, erreur: message, baremeReference: null };
     }
   }, [entreprise, salarie, periode, heures, primeSoumise, joursConges]);
+
+  // Pendant la lecture initiale de l'entreprise depuis le stockage, on n'affiche ni
+  // bulletin ni invite "completez la saisie" : on ne sait pas encore s'il y a une
+  // entreprise. On distingue donc le CHARGEMENT du cas "vraiment pas d'entreprise".
+  if (statutEntreprise === "chargement") {
+    return (
+      <main className="bulletin-page">
+        <header className="bulletin-header">
+          <h1>Bulletin de paie</h1>
+          <Link to="/">Retour a l'accueil</Link>
+        </header>
+        <section className="bulletin-section">
+          <p>Chargement des donnees...</p>
+        </section>
+      </main>
+    );
+  }
 
   // Garde-fou : sans entreprise ET salarie saisis, pas de bulletin par defaut. On
   // invite a completer la saisie, sans planter.

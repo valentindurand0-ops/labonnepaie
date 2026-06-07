@@ -370,3 +370,46 @@ l'affichage. Il doit être testable seul, avec des tests unitaires par règle de
       new Error(msg, { cause }) et retirer le cast.
     - étapes 3 et 4 de la persistance : salarieStore.ts et bulletinStore.ts (même
       patron), puis branchement des trois stores à l'UI / au contexte de saisie.
+- ÉTAPE FAITE : BRANCHEMENT du store entreprise à l'UI (intercalaire entre étapes 2
+  et 3 de la persistance). L'entreprise devient DURABLE : lue depuis Supabase au
+  changement de session, réécrite à la création / modification. Ce branchement prouve
+  enfin la RLS en tant qu'utilisateur connecté.
+  - FRONTIÈRE SACRÉE CONFIRMÉE INTACTE : seule la couche contexte/UI importe le store
+    (et, indirectement, Supabase). Le moteur (src/engine) et le modèle (src/model)
+    n'importent JAMAIS le store ni Supabase et restent purs. Ce branchement N'EST PAS
+    un précédent pour faire entrer Supabase dans le moteur : le sens de dépendance
+    reste à sens unique (UI -> services -> Supabase ; engine/model n'en savent rien).
+  - SaisieContext.tsx N'EST PLUS "pur mémoire" : il ORCHESTRE désormais la
+    persistance de l'entreprise via entrepriseStore (documenté dans son en-tête). Il
+    importe useAuth + chargerEntreprise + enregistrerEntreprise. Il ne fait toujours
+    AUCUN calcul de paie, AUCUN appel au moteur, AUCUN assemblerEntree. La couche 3
+    (salaries) reste en mémoire (sa persistance = étape ultérieure salarieStore).
+  - LECTURE : un useEffect dépendant de user?.id et de authLoading. On attend que la
+    session soit prête (authLoading false) AVANT d'appeler chargerEntreprise, sinon la
+    requête partirait sans JWT et la RLS renverrait 0 ligne à tort. Au logout (user
+    null), l'état de saisie est VIDÉ (entreprise, salaries, sélection) : indispensable
+    à l'isolation par compte (l'entreprise du compte précédent ne doit pas rester en
+    mémoire). Garde annule contre les résolutions tardives.
+  - STATUT EXPLICITE : statutEntreprise: 'chargement' | 'pret' | 'erreur' +
+    erreurEntreprise: string | null exposés par le contexte. Le cas "pas encore
+    d'entreprise" n'est PAS un 4e statut : il se DÉDUIT de (statutEntreprise === 'pret'
+    && entreprise === null). Évite que les écrans confondent chargement, vide et
+    erreur (sinon BulletinPage afficherait "complétez la saisie" pendant le
+    chargement).
+  - ÉCRITURE : action sauvegarderEntreprise(e) dans le PROVIDER. Elle appelle
+    enregistrerEntreprise PUIS pose dans l'état l'objet RE-MAPPÉ renvoyé par la base.
+    INVARIANT : setEntreprise n'est jamais appelé qu'avec un objet venu de la base
+    (lecture ou écriture) ; setEntreprise n'est plus exposé par le contexte. En cas
+    d'échec d'écriture, l'action rejette SANS toucher l'état mémoire ; l'écran attrape
+    et affiche, la saisie n'est pas perdue.
+  - ÉCRANS : SaisiePage appelle sauvegarderEntreprise (async), ne bascule sur l'onglet
+    salarié qu'au SUCCÈS, affiche chargement / erreur de lecture (du contexte) et
+    enregistrement en cours / erreur d'écriture (état local). BulletinPage distingue
+    désormais statutEntreprise === 'chargement' (message neutre) du cas "vraiment pas
+    d'entreprise" (invite à compléter). EntrepriseForm INCHANGÉ : il émet toujours un
+    objet Entreprise via onSave, ignore tout du store.
+  - PREUVE RLS (parcours manuel) : compte A saisit + enregistre une entreprise ->
+    recharge la page connecté A -> l'entreprise A revient (SELECT RLS). Logout ->
+    login compte B -> aucune entreprise (B ne voit pas celle de A). B enregistre la
+    sienne. Re-login A -> l'entreprise A réapparaît inchangée. Côté base : deux lignes
+    avec owner_id distincts (INSERT with check via default auth.uid()).
