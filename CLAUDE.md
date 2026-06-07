@@ -328,3 +328,45 @@ l'affichage. Il doit être testable seul, avec des tests unitaires par règle de
       exceptions) et héritage des valeurs communes entreprise -> salarié.
     - wizard de classification Syntec (2-3 questions déduisant position/coefficient).
     - brancher Supabase (persistance des couches).
+- ÉTAPE FAITE : PERSISTANCE Supabase, étape 1 (schéma) puis étape 2 (couche d'accès
+  ENTREPRISE). Le schéma SQL des 3 tables (entreprise, salarie, bulletin_mensuel) est
+  versionné sous supabase/migrations/ avec RLS par compte (owner_id = auth.uid()) et
+  triggers de cohérence propriétaire le long des liens. Nouveau module d'accès
+  src/services/entrepriseStore.ts (couche STOCKAGE, même famille que
+  rechercheEntreprises) :
+  - FRONTIÈRE intacte : le moteur (src/engine) et le modèle (src/model) ne lisent
+    jamais la base et n'importent jamais ce module. Sens unique : entrepriseStore
+    importe src/lib/supabase + des types-only de src/model/types. Le mapping base
+    <-> modèle est un secret du fichier (type privé LigneEntreprise + deux fonctions
+    privées ligneVersEntreprise / entrepriseVersPayload) ; le reste de l'app ne voit
+    que des objets Entreprise.
+  - Deux fonctions exposées : chargerEntreprise() -> Entreprise | null (via
+    maybeSingle : null = "rien en base", distinct d'une erreur levée) ;
+    enregistrerEntreprise(Entreprise) -> Entreprise (upsert idempotent sur la PK id,
+    re-mappé depuis la ligne renvoyée par .single() pour adopter l'id/les valeurs
+    canoniques côté base).
+  - ISOLATION : owner_id jamais manipulé côté client. Lecture restreinte par la RLS ;
+    écriture omet owner_id du payload, le default auth.uid() le pose à l'INSERT
+    (infalsifiable). created_at idem (default now()). Les deux sont jetés à la lecture
+    (absents du modèle).
+  - Coercition Number(...) sur les numeric à la lecture (PostgREST peut renvoyer un
+    numeric en chaîne) ; null <-> undefined pour communeInsee / organismes.
+  - Gestion d'erreur : le client Supabase renvoie { data, error } ; le module convertit
+    en Error standard (message français + cause conservée), l'appelant n'importe jamais
+    Supabase.
+  - PÉRIMÈTRE de l'étape : juste le module. Aucun écran, aucun contexte de saisie,
+    aucun model/engine touché. Branchement à l'UI = étape suivante. Typecheck propre,
+    86 tests verts inchangés.
+  - RESTE À FAIRE (dettes assumées du proto, tracées ici pour ne pas les oublier) :
+    - classe ErreurStockage (extends Error) à introduire si un jour l'UI doit
+      discriminer PROGRAMMATIQUEMENT un échec de stockage d'une autre erreur. Au proto,
+      une Error simple suffit.
+    - validation runtime du schéma de organismes (jsonb) À LA LECTURE quand la DSN
+      exploitera vraiment ces champs. Aujourd'hui typecast jsonb -> Organismes sans
+      validation, raccourci assumé.
+    - dette ES2020 sur la cause d'erreur : la cible du projet est ES2020, donc
+      new Error(msg, { cause }) (ES2022) est refusé ; on assigne .cause après
+      construction via un cast. Quand la cible passera à ES2022, remplacer par
+      new Error(msg, { cause }) et retirer le cast.
+    - étapes 3 et 4 de la persistance : salarieStore.ts et bulletinStore.ts (même
+      patron), puis branchement des trois stores à l'UI / au contexte de saisie.
