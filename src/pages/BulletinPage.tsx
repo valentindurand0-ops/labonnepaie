@@ -9,32 +9,25 @@ import {
 } from "../engine";
 import { assemblerEntree, type BulletinMensuel } from "../model/types";
 import { useSaisie } from "../context/SaisieContext";
+import { HistoriqueBulletins } from "../components/HistoriqueBulletins";
+import { formaterMontant } from "../utils/formatage";
 
 // Page d'AFFICHAGE du bulletin.
 //
 // SOURCE DES DONNEES : l'entreprise (couche 2) et le salarie SELECTIONNE (couche 3)
 // viennent du SaisieContext, donc de ce qui a ete REELLEMENT saisi dans /saisie. Le
-// contexte detient une LISTE de salaries ; cette page affiche le salarie actif
-// (salarieSelectionne), et propose de changer lequel est affiche. Plus aucune donnee
-// en dur (l'ancien cadre 4000 a disparu). La couche MENSUELLE (couche 4 : periode,
-// heures, prime, conges) est saisie ICI, en etat local : c'est la donnee qui change
-// chaque mois, elle n'a pas sa place dans le contexte partage.
+// salarie affiche est le salarie ACTIF (salarieSelectionne) ; on ne change PLUS de
+// salarie ici (le selecteur a disparu en etape 5a). Le seul chemin de selection est
+// la FICHE (/salarie/:id), qui aligne salarieSelectionneId sur l'id de l'URL avant de
+// renvoyer vers cette page. Plus aucune donnee en dur (l'ancien cadre 4000 a disparu).
+// La couche MENSUELLE (couche 4 : periode, heures, prime, conges) est saisie ICI, en
+// etat local : c'est la donnee qui change chaque mois, elle n'a pas sa place dans le
+// contexte partage.
 //
 // FRONTIERE : la page ne fabrique JAMAIS l'entree plate du moteur. Elle passe
 // TOUJOURS par assemblerEntree (seul endroit qui reunit les 4 couches) puis
 // calculerBulletin. Le bareme applique est celui resolu par l'assembleur
 // (entree.legal.bareme), pas un identifiant code en dur dans la page.
-
-// Formate un montant en euros : 2 decimales et espace separateur de milliers.
-// Ex : 5588.08 -> "5 588.08 €". N'effectue aucun calcul de paie.
-function formaterMontant(valeur: number): string {
-  const fixe = valeur.toFixed(2);
-  const [entier, decimales] = fixe.split(".");
-  const signe = entier.startsWith("-") ? "-" : "";
-  const chiffres = signe ? entier.slice(1) : entier;
-  const avecEspaces = chiffres.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-  return `${signe}${avecEspaces}.${decimales} €`;
-}
 
 // Affiche un taux en pourcentage avec 2 decimales. Ex : 6.9 -> "6.90 %".
 function formaterTaux(taux: number): string {
@@ -78,16 +71,14 @@ function TableLignes({
 
 export function BulletinPage() {
   // Couches 2 et 3 : lues dans le contexte partage (saisies dans /saisie). Le
-  // salarie affiche est le salarie SELECTIONNE (derive du contexte). On lit aussi la
-  // liste et de quoi changer la selection, pour offrir un selecteur de salarie.
+  // salarie affiche est le salarie SELECTIONNE (derive du contexte). On ne lit plus
+  // la liste ni de quoi changer la selection : le selecteur a disparu (etape 5a), la
+  // selection se fait sur la fiche.
   const {
     entreprise,
     statutEntreprise,
     statutSalaries,
-    salaries,
     salarieSelectionne,
-    salarieSelectionneId,
-    selectionnerSalarie,
     bulletins,
     statutBulletins,
     erreurBulletins,
@@ -273,24 +264,6 @@ export function BulletinPage() {
 
       <section className="bulletin-section">
         <h2>Entreprise et salarie</h2>
-        {/* Selecteur du salarie affiche : visible des qu'il y a au moins deux
-            salaries (avec un seul, rien a choisir). Change le salarie actif du
-            contexte ; tout le bulletin se recalcule pour le salarie choisi. */}
-        {salaries.length > 1 ? (
-          <label className="bulletin-selecteur-salarie">
-            Salarie affiche
-            <select
-              value={salarieSelectionneId ?? ""}
-              onChange={(e) => selectionnerSalarie(e.target.value)}
-            >
-              {salaries.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.prenom} {s.nom}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
         <table className="bulletin-table">
           <tbody>
             <tr>
@@ -392,43 +365,14 @@ export function BulletinPage() {
       {/* Historique en LECTURE SEULE du salarie actif, sous le formulaire et au-dessus
           du bulletin calcule : le mois fraichement enregistre apparait en tete (tri
           decroissant fait par le store / le contexte, jamais ici) juste sous le bouton.
-          On affiche UNIQUEMENT les entrees de la couche 4, jamais les sorties du moteur.
-          Les trois etats de statutBulletins sont cantonnes a cette section : une lecture
-          d'historique en echec n'empeche ni la saisie ni le calcul ci-dessous. Un clic
-          sur une ligne ne fait rien (re-edition d'un mois passe = etape ulterieure). */}
-      <section className="bulletin-section">
-        <h2>Historique des bulletins enregistres</h2>
-        {statutBulletins === "chargement" ? (
-          <p>Chargement de l'historique...</p>
-        ) : statutBulletins === "erreur" ? (
-          <p className="bulletin-erreur" role="alert">
-            {erreurBulletins}
-          </p>
-        ) : bulletins.length === 0 ? (
-          <p>Aucun mois enregistre pour ce salarie.</p>
-        ) : (
-          <table className="bulletin-table">
-            <thead>
-              <tr>
-                <th>Periode</th>
-                <th className="num">Heures</th>
-                <th className="num">Prime soumise</th>
-                <th className="num">Jours de conges</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bulletins.map((b) => (
-                <tr key={b.periode}>
-                  <td>{b.periode}</td>
-                  <td className="num">{b.heures}</td>
-                  <td className="num">{formaterMontant(b.primeSoumise ?? 0)}</td>
-                  <td className="num">{b.joursConges ?? 0}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+          Composant EXTRAIT (etape 5a) et partage avec la fiche salarie : une lecture
+          d'historique en echec reste cantonnee a sa section, elle n'empeche ni la
+          saisie ni le calcul ci-dessous. */}
+      <HistoriqueBulletins
+        statut={statutBulletins}
+        erreur={erreurBulletins}
+        bulletins={bulletins}
+      />
 
       {erreur ? (
         <p className="bulletin-erreur" role="alert">

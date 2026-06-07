@@ -1,74 +1,43 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  assemblerEntree,
-  type BulletinMensuel,
-  type Entreprise,
-  type Salarie,
-} from "../model/types";
-import {
-  calculerBulletin,
-  getBareme,
-  HEURES_MENSUELLES_LEGALES,
-  type BulletinCalcule,
-} from "../engine";
+import type { Entreprise, Salarie } from "../model/types";
 import { EntrepriseForm } from "../components/EntrepriseForm";
 import { SalarieForm } from "../components/SalarieForm";
 import { useSaisie } from "../context/SaisieContext";
+import { formaterMontant } from "../utils/formatage";
 
 // Page de SAISIE : onglets entreprise (couche 2) et salaries (couche 3), poses sur
 // le modele a 4 couches (src/model/types.ts).
 //
-// ETAPE SANS PERSISTANCE : l'etat des couches (entreprise, liste de salaries) vit
-// dans le SaisieContext (partage avec BulletinPage), en memoire. Pas de Supabase a
-// ce stade. Cette page ne DETIENT pas cet etat : elle le LIT et l'ECRIT via
-// useSaisie. Seuls l'onglet actif et un compteur de remontage du formulaire restent
-// des etats locaux (pur UI, propres a cette page).
+// L'etat des couches (entreprise, liste de salaries) vit dans le SaisieContext
+// (partage, persiste). Cette page ne DETIENT pas cet etat : elle le LIT et l'ECRIT
+// via useSaisie. Seuls l'onglet actif et un compteur de remontage du formulaire
+// restent des etats locaux (pur UI, propres a cette page).
 //
-// MULTI-SALARIES : une entreprise a plusieurs salaries. L'onglet salarie permet de
-// LISTER les salaries crees, d'en SELECTIONNER un (le rendre actif) et d'en AJOUTER.
-// Le contexte detient la liste plus l'id du salarie actif ; l'ajout passe par
-// ajouterSalarie (qui selectionne aussi le nouveau salarie).
+// REDUITE A "ENTREPRISE + LISTE" (etape 5a) : la page LISTE les salaries et permet
+// d'en AJOUTER, mais l'EDITION d'un salarie existant et l'historique vivent desormais
+// sur la FICHE (/salarie/:id). Chaque salarie de la liste est un LIEN vers sa fiche.
+// Il n'y a plus qu'un seul chemin d'edition du salarie, donc plus de risque de desync.
+// Cette page n'importe PLUS le moteur : la preuve d'assemblage est faite par
+// BulletinPage et par le test unitaire de l'assembleur.
 //
 // FRONTIERE : les onglets produisent des objets de couches (Entreprise, Salarie).
-// L'UI ne fabrique JAMAIS l'entree plate du moteur a la main et n'appelle jamais
-// le moteur sans passer par assemblerEntree, seul endroit qui reunit les couches.
-//
 // DEPENDANCE DE COUCHE : l'entreprise est l'objet racine ; le salarie la reference
 // par id. L'onglet salarie est donc verrouille tant qu'aucune entreprise n'existe.
 
 type Onglet = "entreprise" | "salarie";
 
-// Formate un montant en euros (2 decimales, espace separateur de milliers).
-// Duplique volontairement le helper de BulletinPage : on ne touche pas a cette
-// derniere a cette etape (cf. bascule UI prevue en etape ulterieure). Aucun
-// calcul de paie ici.
-function formaterMontant(valeur: number): string {
-  const fixe = valeur.toFixed(2);
-  const [entier, decimales] = fixe.split(".");
-  const signe = entier.startsWith("-") ? "-" : "";
-  const chiffres = signe ? entier.slice(1) : entier;
-  const avecEspaces = chiffres.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-  return `${signe}${avecEspaces}.${decimales} €`;
-}
-
 export function SaisiePage() {
-  // Etat des couches : detenu par le SaisieContext (partage avec BulletinPage),
-  // pas par cette page. On le lit et on l'ecrit via le contexte. salarieSelectionne
-  // est le DERIVE du contexte (salarie actif retrouve dans la liste).
+  // Etat des couches : detenu par le SaisieContext (partage), pas par cette page.
   const {
     entreprise,
     statutEntreprise,
     erreurEntreprise,
     sauvegarderEntreprise,
     salaries,
-    salarieSelectionneId,
-    salarieSelectionne,
     statutSalaries,
     erreurSalaries,
     ajouterSalarie,
-    selectionnerSalarie,
-    modifierSalarie,
   } = useSaisie();
   // Onglet actif : pur etat d'UI, local a cette page (rien a partager).
   const [ongletActif, setOngletActif] = useState<Onglet>("entreprise");
@@ -82,17 +51,11 @@ export function SaisiePage() {
   const [erreurEnregistrement, setErreurEnregistrement] = useState<
     string | null
   >(null);
-  // Etat local de l'ECRITURE d'un salarie (ajout ou modification), distinct de la
-  // lecture (statutSalaries / erreurSalaries viennent du contexte).
+  // Etat local de l'ECRITURE d'un salarie (ajout), distinct de la lecture
+  // (statutSalaries / erreurSalaries viennent du contexte).
   const [enregistrementSalarieEnCours, setEnregistrementSalarieEnCours] =
     useState(false);
   const [erreurSalarie, setErreurSalarie] = useState<string | null>(null);
-  // Salarie en cours d'EDITION (clic sur "Modifier" dans la liste). null = le
-  // formulaire est en mode AJOUT. Edition minimale : on reutilise SalarieForm
-  // pre-rempli, l'id du salarie est conserve (branche UPDATE de l'upsert).
-  const [salarieEnEdition, setSalarieEnEdition] = useState<Salarie | null>(
-    null,
-  );
 
   // Orchestration de l'ecriture : on persiste via le contexte (qui re-mappe et pose
   // l'objet venu de la base), on ne bascule sur l'onglet salarie qu'au SUCCES, et on
@@ -134,67 +97,8 @@ export function SaisiePage() {
     }
   }
 
-  // Orchestration de la MODIFICATION d'un salarie existant (branche UPDATE) : au
-  // SUCCES on ferme le formulaire d'edition (retour au mode ajout) ; en cas d'echec on
-  // garde le formulaire rempli pour ne pas perdre la saisie.
-  async function enregistrerModificationSalarie(s: Salarie) {
-    setEnregistrementSalarieEnCours(true);
-    setErreurSalarie(null);
-    try {
-      await modifierSalarie(s);
-      setSalarieEnEdition(null);
-    } catch (err) {
-      setErreurSalarie(
-        err instanceof Error
-          ? err.message
-          : "Modification du salarie impossible.",
-      );
-    } finally {
-      setEnregistrementSalarieEnCours(false);
-    }
-  }
-
   // L'onglet salarie n'existe pas sans entreprise (dependance de couche).
   const salarieAccessible = entreprise !== null;
-
-  // Bulletin minimal NON EDITABLE a cette etape (pas d'onglet bulletin). Il sert
-  // uniquement a prouver l'assemblage bout en bout pour le salarie SELECTIONNE. La
-  // duree mensuelle vient du moteur (HEURES_MENSUELLES_LEGALES), pas d'un nombre
-  // magique ecrit ici.
-  const bulletinMinimal = useMemo<BulletinMensuel | null>(() => {
-    if (!salarieSelectionne) return null;
-    return {
-      salarieId: salarieSelectionne.id,
-      periode: "2026-06",
-      heures: HEURES_MENSUELLES_LEGALES,
-    };
-  }, [salarieSelectionne]);
-
-  // Preuve : entreprise + salarie selectionne + bulletin minimal -> assembleur ->
-  // moteur. On passe TOUJOURS par assemblerEntree ; on ne fabrique pas l'entree plate.
-  const { bulletin, erreur } = useMemo<{
-    bulletin: BulletinCalcule | null;
-    erreur: string | null;
-  }>(() => {
-    if (!entreprise || !salarieSelectionne || !bulletinMinimal) {
-      return { bulletin: null, erreur: null };
-    }
-    try {
-      const entree = assemblerEntree(
-        entreprise,
-        salarieSelectionne,
-        bulletinMinimal,
-      );
-      return {
-        bulletin: calculerBulletin(entree, getBareme(entree.legal.bareme)),
-        erreur: null,
-      };
-    } catch (e) {
-      const message =
-        e instanceof Error ? e.message : "Erreur d'assemblage inconnue.";
-      return { bulletin: null, erreur: message };
-    }
-  }, [entreprise, salarieSelectionne, bulletinMinimal]);
 
   return (
     <main className="bulletin-page">
@@ -277,76 +181,34 @@ export function SaisiePage() {
                   </p>
                 ) : null}
 
-                {/* Liste des salaries : chacun selectionnable (devient l'actif, marque)
-                    et editable (bouton Modifier -> formulaire pre-rempli). Vide au
+                {/* Liste des salaries : chacun est un LIEN vers sa fiche
+                    (/salarie/:id), ou se font l'edition et l'historique. Vide au
                     depart. */}
                 {salaries.length === 0 ? (
                   <p>Aucun salarie pour l'instant. Ajoutez-en un ci-dessous.</p>
                 ) : (
                   <ul className="salarie-liste">
-                    {salaries.map((s) => {
-                      const actif = s.id === salarieSelectionneId;
-                      return (
-                        <li key={s.id}>
-                          <button
-                            type="button"
-                            className={actif ? "actif" : ""}
-                            aria-pressed={actif}
-                            onClick={() => selectionnerSalarie(s.id)}
-                          >
-                            {s.prenom} {s.nom} -{" "}
-                            {s.statut === "cadre" ? "Cadre" : "ETAM"} -{" "}
-                            {formaterMontant(s.salaireBaseMensuel)}
-                            {actif ? " (selectionne)" : ""}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setSalarieEnEdition(s)}
-                          >
-                            Modifier
-                          </button>
-                        </li>
-                      );
-                    })}
+                    {salaries.map((s) => (
+                      <li key={s.id}>
+                        <Link to={`/salarie/${s.id}`}>
+                          {s.prenom} {s.nom} -{" "}
+                          {s.statut === "cadre" ? "Cadre" : "ETAM"} -{" "}
+                          {formaterMontant(s.salaireBaseMensuel)}
+                        </Link>
+                      </li>
+                    ))}
                   </ul>
                 )}
 
-                {/* Formulaire en deux modes. EDITION (salarieEnEdition non null) :
-                    SalarieForm pre-rempli, l'id du salarie est conserve, onSave passe
-                    par modifierSalarie (branche UPDATE). key={salarieEnEdition.id} pour
-                    remonter le form quand on change de salarie a editer. AJOUT (sinon) :
-                    formulaire vierge, la key (compteur) le remonte apres chaque ajout
-                    reussi ; onSave passe par ajouterSalarie. */}
-                {salarieEnEdition ? (
-                  <>
-                    <h3>Modifier le salarie</h3>
-                    <SalarieForm
-                      key={salarieEnEdition.id}
-                      entrepriseId={entreprise.id}
-                      salarie={salarieEnEdition}
-                      onSave={(s) => void enregistrerModificationSalarie(s)}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSalarieEnEdition(null);
-                        setErreurSalarie(null);
-                      }}
-                    >
-                      Annuler la modification
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <h3>Ajouter un salarie</h3>
-                    <SalarieForm
-                      key={compteurFormSalarie}
-                      entrepriseId={entreprise.id}
-                      salarie={null}
-                      onSave={(s) => void enregistrerNouveauSalarie(s)}
-                    />
-                  </>
-                )}
+                {/* Ajout d'un salarie : formulaire vierge, la key (compteur) le
+                    remonte apres chaque ajout reussi ; onSave passe par ajouterSalarie. */}
+                <h3>Ajouter un salarie</h3>
+                <SalarieForm
+                  key={compteurFormSalarie}
+                  entrepriseId={entreprise.id}
+                  salarie={null}
+                  onSave={(s) => void enregistrerNouveauSalarie(s)}
+                />
 
                 {/* Etats de l'ECRITURE d'un salarie (distincts de la lecture). */}
                 {enregistrementSalarieEnCours ? (
@@ -364,45 +226,6 @@ export function SaisiePage() {
           )}
         </section>
       ) : null}
-
-      <section className="bulletin-section">
-        <h2>Verification de l'assemblage</h2>
-        {!entreprise || !salarieSelectionne ? (
-          <p>
-            Renseignez l'entreprise puis selectionnez un salarie pour assembler un
-            bulletin de controle.
-          </p>
-        ) : erreur ? (
-          <p className="bulletin-erreur" role="alert">
-            {erreur}
-          </p>
-        ) : bulletin ? (
-          <table className="bulletin-table bulletin-totaux">
-            <tbody>
-              <tr>
-                <td>Brut total soumis</td>
-                <td className="num">{formaterMontant(bulletin.brutTotal)}</td>
-              </tr>
-              <tr>
-                <td>Net social</td>
-                <td className="num">{formaterMontant(bulletin.netSocial)}</td>
-              </tr>
-              <tr>
-                <td>Total cotisations patronales</td>
-                <td className="num">
-                  {formaterMontant(bulletin.totalCotisationsPatronales)}
-                </td>
-              </tr>
-              <tr>
-                <td>Cout total employeur</td>
-                <td className="num">
-                  {formaterMontant(bulletin.coutTotalEmployeur)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        ) : null}
-      </section>
     </main>
   );
 }

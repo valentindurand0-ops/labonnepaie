@@ -8,6 +8,11 @@ import {
   type ReactNode,
 } from "react";
 import type { BulletinMensuel, Entreprise, Salarie } from "../model/types";
+import type {
+  StatutEntreprise,
+  StatutSalaries,
+  StatutBulletins,
+} from "../types/statuts";
 import { useAuth } from "../auth/useAuth";
 import {
   chargerEntreprise,
@@ -67,21 +72,10 @@ import {
 // bulletin EN COURS DE SAISIE (le mois qu'on edite, pas encore enregistre) reste local
 // a BulletinPage : le contexte ne porte que ce qui est durci en base.
 
-// Statut du cycle de LECTURE de l'entreprise. Le cas "pas encore d'entreprise" n'est
-// PAS un statut a part : il se DEDUIT de (statutEntreprise === "pret" && entreprise
-// === null).
-export type StatutEntreprise = "chargement" | "pret" | "erreur";
-
-// Statut du cycle de LECTURE des salaries. Meme tryptique que l'entreprise. Le cas
-// "aucun salarie" n'est PAS un statut a part : il se DEDUIT de (statutSalaries ===
-// "pret" && salaries.length === 0).
-export type StatutSalaries = "chargement" | "pret" | "erreur";
-
-// Statut du cycle de LECTURE de l'historique du salarie actif. Meme tryptique. Le cas
-// "aucun bulletin" n'est PAS un statut a part : il se DEDUIT de (statutBulletins ===
-// "pret" && bulletins.length === 0). Le cas "aucun salarie selectionne" est aussi
-// "pret" avec bulletins vide : il n'y a rien a charger.
-export type StatutBulletins = "chargement" | "pret" | "erreur";
+// Les statuts de lecture des trois couches (StatutEntreprise, StatutSalaries,
+// StatutBulletins) sont definis dans un module NEUTRE (src/types/statuts.ts), pour
+// qu'un composant purement presentationnel puisse les typer sans dependre de ce
+// contexte. Ce fichier les PRODUIT (les setters ci-dessous), il ne les definit plus.
 
 interface SaisieContextValue {
   // Couche 2 : objet racine. null = soit pas encore charge (statut "chargement"),

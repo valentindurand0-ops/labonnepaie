@@ -6,6 +6,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { HomePage } from "./pages/HomePage";
 import { BulletinPage } from "./pages/BulletinPage";
 import { SaisiePage } from "./pages/SaisiePage";
+import { FicheSalariePage } from "./pages/FicheSalariePage";
 
 // Declaration des routes de l'application.
 // "/" est protegee, "/login" est publique.
@@ -42,6 +43,14 @@ export function App() {
               element={
                 <ProtectedRoute>
                   <SaisiePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/salarie/:id"
+              element={
+                <ProtectedRoute>
+                  <FicheSalariePage />
                 </ProtectedRoute>
               }
             />

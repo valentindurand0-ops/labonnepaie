@@ -520,3 +520,67 @@ l'affichage. Il doit être testable seul, avec des tests unitaires par règle de
       afficher les mois déjà enregistrés, persister le mois en cours de saisie.
     - dette ES2020 sur la cause d'erreur (idem entreprise/salarie) : à remplacer quand la
       cible passera à ES2022.
+- ÉTAPE FAITE : FICHE SALARIÉ sur route dédiée (/salarie/:id), étape 5a. Les morceaux
+  existants convergent en un seul écran par salarié : ses données STABLES éditables
+  (couche 3) et l'HISTORIQUE de ses bulletins (couche 4), plus un bouton vers le
+  bulletin du mois. On RÉUTILISE l'existant, on ne réécrit pas : SalarieForm en mode
+  édition (déjà câblé à modifierSalarie -> enregistrerSalarie), l'historique déjà
+  branché en lecture, BulletinPage déjà branchée.
+  - ROUTE : /salarie/:id ajoutée dans src/App.tsx (route protégée, même patron que
+    /saisie), avant le catch-all. Nouvelle page src/pages/FicheSalariePage.tsx.
+  - SÉLECTION À SOURCE UNIQUE : il n'existe toujours qu'UNE source de sélection,
+    salarieSelectionneId dans le contexte (elle pilote la cascade d'historique).
+    L'URL la PILOTE : un useEffect (deps [id, salaries, salarieSelectionneId]) aligne
+    salarieSelectionneId sur l'id de l'URL via selectionnerSalarie, UNIQUEMENT si ce
+    salarié existe dans la liste chargée (jamais d'id fantôme), et seulement si
+    différent de l'actif (évite un set redondant et un double chargement d'historique).
+    AUCUN deuxième état de sélection. Pour l'AFFICHAGE, la fiche résout son salarié
+    DIRECTEMENT par salaries.find(s => s.id === id), pour ne pas dépendre d'un rendu de
+    retard sur salarieSelectionne.
+  - INTROUVABLE : la fiche ne conclut "salarié introuvable" qu'une fois statutSalaries
+    === "pret" (et find null). Tant que la cascade charge (statutEntreprise ou
+    statutSalaries "chargement"), elle affiche "Chargement..." : sinon un rechargement
+    direct de /salarie/:id afficherait "introuvable" à tort (faux négatif). Un id d'un
+    AUTRE compte n'est jamais dans salaries (RLS) : il retombe sur "introuvable", sans
+    fuite. Lecture salariés en échec : message d'erreur, pas "introuvable".
+  - SaisiePage RÉDUITE à "entreprise + liste" : l'ÉDITION du salarié et la section
+    "Vérification de l'assemblage" sont RETIRÉES (déplacées vers la fiche pour l'édition,
+    supprimées pour la vérification, désormais redondante avec BulletinPage et le test
+    de l'assembleur). Conséquence VOULUE : SaisiePage n'importe PLUS le moteur du tout
+    (assemblerEntree, calculerBulletin, getBareme, HEURES_MENSUELLES_LEGALES, types
+    moteur tous retirés). La liste des salariés devient des LIENS vers /salarie/:id
+    (plus de sélection au clic, plus de marquage de l'actif) et réaffiche le salaire de
+    base via formaterMontant importé de l'util neutre (pas une copie locale, pas le
+    moteur). L'AJOUT d'un salarié reste sur SaisiePage (pas d'id avant création).
+  - BulletinPage : le SÉLECTEUR de salarié (le <select> dès 2 salariés) est RETIRÉ. Un
+    seul chemin de sélection désormais : la fiche. BulletinPage lit salarieSelectionne,
+    point (salaries / salarieSelectionneId / selectionnerSalarie ne sont plus lus). La
+    classe CSS bulletin-selecteur-salarie (qui n'avait jamais eu de règle dédiée) part
+    avec le <select>.
+  - EXTRACTION : le tableau d'historique inline de BulletinPage est sorti en composant
+    PRÉSENTATIONNEL src/components/HistoriqueBulletins.tsx (props : statut, erreur,
+    bulletins), consommé par BulletinPage ET FicheSalariePage. On extrait, on ne recopie
+    pas. Le composant ne lit NI le contexte NI le moteur, et ne dépend même pas du
+    module contexte pour son type : tout entre par les props, et StatutBulletins vient
+    d'un module de types NEUTRE (src/types/statuts.ts), pas de SaisieContext.
+  - DEUX MODULES NEUTRES extraits pour casser les couplages restants :
+    - src/utils/formatage.ts : helper de présentation formaterMontant (toFixed + regex
+      d'espaces), AUCUN import de src/engine ni src/model. SOURCE UNIQUE désormais :
+      HistoriqueBulletins, BulletinPage et SaisiePage l'importent, plus aucune copie
+      locale (avant 5a la fonction était dupliquée à l'identique dans plusieurs fichiers).
+    - src/types/statuts.ts : les trois triptyques de statut de lecture
+      (StatutEntreprise / StatutSalaries / StatutBulletins), sortis de SaisieContext.
+      Le contexte les PRODUIT et les importe de là ; un composant présentationnel peut
+      les typer sans dépendre du contexte.
+  - DÉPENDANCE IMPLICITE ASSUMÉE (commentée dans FicheSalariePage au-dessus du lien) :
+    le bouton "Editer le bulletin du mois" (<Link to="/bulletin">) repose sur le fait
+    que la fiche a déjà aligné salarieSelectionneId sur l'id de l'URL (effet de
+    synchronisation), car BulletinPage lit le salarié via salarieSelectionne du
+    contexte, PAS via un param d'URL.
+  - RESTE À FAIRE :
+    - faire passer BulletinPage sur /bulletin/:id pour supprimer la dépendance
+      implicite ci-dessus (BulletinPage lirait son salarié depuis l'URL, comme la
+      fiche, au lieu de salarieSelectionne). C'est la CONDITION DE SUPPRESSION du
+      commentaire posé au-dessus du lien dans FicheSalariePage.
+    - reconduction mensuelle et héritage entreprise -> salarié (toujours en attente).
+    - wizard de classification Syntec (toujours en attente).
