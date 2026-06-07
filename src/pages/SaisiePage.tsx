@@ -4,6 +4,7 @@ import {
   assemblerEntree,
   type BulletinMensuel,
   type Entreprise,
+  type Salarie,
 } from "../model/types";
 import {
   calculerBulletin,
@@ -63,8 +64,11 @@ export function SaisiePage() {
     salaries,
     salarieSelectionneId,
     salarieSelectionne,
+    statutSalaries,
+    erreurSalaries,
     ajouterSalarie,
     selectionnerSalarie,
+    modifierSalarie,
   } = useSaisie();
   // Onglet actif : pur etat d'UI, local a cette page (rien a partager).
   const [ongletActif, setOngletActif] = useState<Onglet>("entreprise");
@@ -78,6 +82,17 @@ export function SaisiePage() {
   const [erreurEnregistrement, setErreurEnregistrement] = useState<
     string | null
   >(null);
+  // Etat local de l'ECRITURE d'un salarie (ajout ou modification), distinct de la
+  // lecture (statutSalaries / erreurSalaries viennent du contexte).
+  const [enregistrementSalarieEnCours, setEnregistrementSalarieEnCours] =
+    useState(false);
+  const [erreurSalarie, setErreurSalarie] = useState<string | null>(null);
+  // Salarie en cours d'EDITION (clic sur "Modifier" dans la liste). null = le
+  // formulaire est en mode AJOUT. Edition minimale : on reutilise SalarieForm
+  // pre-rempli, l'id du salarie est conserve (branche UPDATE de l'upsert).
+  const [salarieEnEdition, setSalarieEnEdition] = useState<Salarie | null>(
+    null,
+  );
 
   // Orchestration de l'ecriture : on persiste via le contexte (qui re-mappe et pose
   // l'objet venu de la base), on ne bascule sur l'onglet salarie qu'au SUCCES, et on
@@ -96,6 +111,46 @@ export function SaisiePage() {
       );
     } finally {
       setEnregistrementEnCours(false);
+    }
+  }
+
+  // Orchestration de l'AJOUT d'un salarie : on persiste via le contexte (qui re-mappe
+  // et pose l'objet venu de la base), on ne remonte le formulaire a vide qu'au SUCCES,
+  // et on affiche l'erreur sans perdre la saisie en cas d'echec.
+  async function enregistrerNouveauSalarie(s: Salarie) {
+    setEnregistrementSalarieEnCours(true);
+    setErreurSalarie(null);
+    try {
+      await ajouterSalarie(s);
+      setCompteurFormSalarie((n) => n + 1);
+    } catch (err) {
+      setErreurSalarie(
+        err instanceof Error
+          ? err.message
+          : "Enregistrement du salarie impossible.",
+      );
+    } finally {
+      setEnregistrementSalarieEnCours(false);
+    }
+  }
+
+  // Orchestration de la MODIFICATION d'un salarie existant (branche UPDATE) : au
+  // SUCCES on ferme le formulaire d'edition (retour au mode ajout) ; en cas d'echec on
+  // garde le formulaire rempli pour ne pas perdre la saisie.
+  async function enregistrerModificationSalarie(s: Salarie) {
+    setEnregistrementSalarieEnCours(true);
+    setErreurSalarie(null);
+    try {
+      await modifierSalarie(s);
+      setSalarieEnEdition(null);
+    } catch (err) {
+      setErreurSalarie(
+        err instanceof Error
+          ? err.message
+          : "Modification du salarie impossible.",
+      );
+    } finally {
+      setEnregistrementSalarieEnCours(false);
     }
   }
 
@@ -209,48 +264,101 @@ export function SaisiePage() {
         <section className="bulletin-section">
           <h2>Salaries</h2>
           {entreprise ? (
-            <>
-              {/* Liste des salaries crees : chacun selectionnable (devient l'actif).
-                  L'actif est marque. Vide au depart. */}
-              {salaries.length === 0 ? (
-                <p>Aucun salarie pour l'instant. Ajoutez-en un ci-dessous.</p>
-              ) : (
-                <ul className="salarie-liste">
-                  {salaries.map((s) => {
-                    const actif = s.id === salarieSelectionneId;
-                    return (
-                      <li key={s.id}>
-                        <button
-                          type="button"
-                          className={actif ? "actif" : ""}
-                          aria-pressed={actif}
-                          onClick={() => selectionnerSalarie(s.id)}
-                        >
-                          {s.prenom} {s.nom} -{" "}
-                          {s.statut === "cadre" ? "Cadre" : "ETAM"} -{" "}
-                          {formaterMontant(s.salaireBaseMensuel)}
-                          {actif ? " (selectionne)" : ""}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
+            statutSalaries === "chargement" ? (
+              // Pendant la lecture des salaries depuis le stockage, on n'affiche ni
+              // liste ni formulaire (sinon "Aucun salarie" clignoterait a tort).
+              <p>Chargement des salaries...</p>
+            ) : (
+              <>
+                {/* Erreur de LECTURE des salaries : affichee, sans bloquer la suite. */}
+                {statutSalaries === "erreur" && erreurSalaries ? (
+                  <p className="bulletin-erreur" role="alert">
+                    {erreurSalaries}
+                  </p>
+                ) : null}
 
-              {/* Ajout d'un NOUVEAU salarie. salarie={null} -> formulaire vierge ;
-                  la key le remonte apres chaque ajout pour repartir a vide. onSave
-                  passe par ajouterSalarie (qui selectionne aussi le nouveau). */}
-              <h3>Ajouter un salarie</h3>
-              <SalarieForm
-                key={compteurFormSalarie}
-                entrepriseId={entreprise.id}
-                salarie={null}
-                onSave={(s) => {
-                  ajouterSalarie(s);
-                  setCompteurFormSalarie((n) => n + 1);
-                }}
-              />
-            </>
+                {/* Liste des salaries : chacun selectionnable (devient l'actif, marque)
+                    et editable (bouton Modifier -> formulaire pre-rempli). Vide au
+                    depart. */}
+                {salaries.length === 0 ? (
+                  <p>Aucun salarie pour l'instant. Ajoutez-en un ci-dessous.</p>
+                ) : (
+                  <ul className="salarie-liste">
+                    {salaries.map((s) => {
+                      const actif = s.id === salarieSelectionneId;
+                      return (
+                        <li key={s.id}>
+                          <button
+                            type="button"
+                            className={actif ? "actif" : ""}
+                            aria-pressed={actif}
+                            onClick={() => selectionnerSalarie(s.id)}
+                          >
+                            {s.prenom} {s.nom} -{" "}
+                            {s.statut === "cadre" ? "Cadre" : "ETAM"} -{" "}
+                            {formaterMontant(s.salaireBaseMensuel)}
+                            {actif ? " (selectionne)" : ""}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSalarieEnEdition(s)}
+                          >
+                            Modifier
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+
+                {/* Formulaire en deux modes. EDITION (salarieEnEdition non null) :
+                    SalarieForm pre-rempli, l'id du salarie est conserve, onSave passe
+                    par modifierSalarie (branche UPDATE). key={salarieEnEdition.id} pour
+                    remonter le form quand on change de salarie a editer. AJOUT (sinon) :
+                    formulaire vierge, la key (compteur) le remonte apres chaque ajout
+                    reussi ; onSave passe par ajouterSalarie. */}
+                {salarieEnEdition ? (
+                  <>
+                    <h3>Modifier le salarie</h3>
+                    <SalarieForm
+                      key={salarieEnEdition.id}
+                      entrepriseId={entreprise.id}
+                      salarie={salarieEnEdition}
+                      onSave={(s) => void enregistrerModificationSalarie(s)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSalarieEnEdition(null);
+                        setErreurSalarie(null);
+                      }}
+                    >
+                      Annuler la modification
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <h3>Ajouter un salarie</h3>
+                    <SalarieForm
+                      key={compteurFormSalarie}
+                      entrepriseId={entreprise.id}
+                      salarie={null}
+                      onSave={(s) => void enregistrerNouveauSalarie(s)}
+                    />
+                  </>
+                )}
+
+                {/* Etats de l'ECRITURE d'un salarie (distincts de la lecture). */}
+                {enregistrementSalarieEnCours ? (
+                  <p className="recherche-statut">Enregistrement en cours...</p>
+                ) : null}
+                {erreurSalarie ? (
+                  <p className="bulletin-erreur" role="alert">
+                    {erreurSalarie}
+                  </p>
+                ) : null}
+              </>
+            )
           ) : (
             <p>Creez d'abord une entreprise dans l'onglet precedent.</p>
           )}

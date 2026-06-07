@@ -83,6 +83,7 @@ export function BulletinPage() {
   const {
     entreprise,
     statutEntreprise,
+    statutSalaries,
     salaries,
     salarieSelectionne,
     salarieSelectionneId,
@@ -158,7 +159,10 @@ export function BulletinPage() {
   // Pendant la lecture initiale de l'entreprise depuis le stockage, on n'affiche ni
   // bulletin ni invite "completez la saisie" : on ne sait pas encore s'il y a une
   // entreprise. On distingue donc le CHARGEMENT du cas "vraiment pas d'entreprise".
-  if (statutEntreprise === "chargement") {
+  // Meme garde pour la cascade des salaries : sans elle, un rechargement de session
+  // avec des salaries en base afficherait "completez la saisie" pendant la fenetre de
+  // chargement alors que des salaries existent (faux negatif).
+  if (statutEntreprise === "chargement" || statutSalaries === "chargement") {
     return (
       <main className="bulletin-page">
         <header className="bulletin-header">
